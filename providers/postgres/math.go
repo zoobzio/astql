@@ -1,9 +1,7 @@
 package postgres
 
 import (
-	"fmt"
-
-	"github.com/zoobzio/astql"
+	"github.com/zoobzio/astql/internal/types"
 )
 
 // MathFunc represents SQL math functions.
@@ -21,14 +19,14 @@ const (
 // MathExpression represents a math function call.
 type MathExpression struct {
 	Function  MathFunc
-	Field     astql.Field
-	Precision *astql.Param // Optional, for ROUND
-	Exponent  *astql.Param // Optional, for POWER
+	Field     types.Field
+	Precision *types.Param // Optional, for ROUND
+	Exponent  *types.Param // Optional, for POWER
 	Alias     string
 }
 
 // Round creates a ROUND math expression.
-func Round(field astql.Field, precision ...astql.Param) MathExpression {
+func Round(field types.Field, precision ...types.Param) MathExpression {
 	expr := MathExpression{
 		Function: MathRound,
 		Field:    field,
@@ -40,7 +38,7 @@ func Round(field astql.Field, precision ...astql.Param) MathExpression {
 }
 
 // Floor creates a FLOOR math expression.
-func Floor(field astql.Field) MathExpression {
+func Floor(field types.Field) MathExpression {
 	return MathExpression{
 		Function: MathFloor,
 		Field:    field,
@@ -48,7 +46,7 @@ func Floor(field astql.Field) MathExpression {
 }
 
 // Ceil creates a CEIL math expression.
-func Ceil(field astql.Field) MathExpression {
+func Ceil(field types.Field) MathExpression {
 	return MathExpression{
 		Function: MathCeil,
 		Field:    field,
@@ -56,7 +54,7 @@ func Ceil(field astql.Field) MathExpression {
 }
 
 // Abs creates an ABS math expression.
-func Abs(field astql.Field) MathExpression {
+func Abs(field types.Field) MathExpression {
 	return MathExpression{
 		Function: MathAbs,
 		Field:    field,
@@ -64,7 +62,7 @@ func Abs(field astql.Field) MathExpression {
 }
 
 // Power creates a POWER math expression.
-func Power(field astql.Field, exponent astql.Param) MathExpression {
+func Power(field types.Field, exponent types.Param) MathExpression {
 	return MathExpression{
 		Function: MathPower,
 		Field:    field,
@@ -73,7 +71,7 @@ func Power(field astql.Field, exponent astql.Param) MathExpression {
 }
 
 // Sqrt creates a SQRT math expression.
-func Sqrt(field astql.Field) MathExpression {
+func Sqrt(field types.Field) MathExpression {
 	return MathExpression{
 		Function: MathSqrt,
 		Field:    field,
@@ -82,10 +80,6 @@ func Sqrt(field astql.Field) MathExpression {
 
 // As adds an alias to a math expression.
 func (expr MathExpression) As(alias string) MathExpression {
-	// Validate alias against registered field aliases
-	if err := astql.ValidateFieldAlias(alias); err != nil {
-		panic(fmt.Errorf("invalid field alias: %w", err))
-	}
 	expr.Alias = alias
 	return expr
 }

@@ -2,27 +2,19 @@ package postgres
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/zoobzio/astql"
-)
-
-// Result type constants.
-const (
-	ResultTypeCount = "count"
+	"github.com/zoobzio/astql/internal/types"
 )
 
 // Provider renders PostgreSQL AST to SQL with named parameters.
-type Provider struct {
-	// IncludeMetadata determines if type metadata should be extracted
-	IncludeMetadata bool
-}
+type Provider struct{}
 
 // NewProvider creates a new PostgreSQL provider.
 func NewProvider() *Provider {
-	return &Provider{
-		IncludeMetadata: true,
-	}
+	return &Provider{}
 }
 
 // Render converts a PostgreSQL AST to a QueryResult with SQL, parameters, and metadata.
@@ -36,7 +28,7 @@ func (p *Provider) Render(ast *AST) (*astql.QueryResult, error) {
 	usedParams := make(map[string]bool)
 
 	// Helper to add a parameter and return its placeholder
-	addParam := func(param astql.Param) string {
+	addParam := func(param types.Param) string {
 		// Use named parameters for sqlx
 		placeholder := ":" + param.Name
 
@@ -54,49 +46,40 @@ func (p *Provider) Render(ast *AST) (*astql.QueryResult, error) {
 
 	// Render based on operation
 	switch ast.Operation {
-	case astql.OpSelect:
+	case types.OpSelect:
 		if err := p.renderSelectWithContext(ast, &sql, ctx); err != nil {
 			return nil, err
 		}
-	case astql.OpInsert:
+	case types.OpInsert:
 		if err := p.renderInsert(ast, &sql, addParam); err != nil {
 			return nil, err
 		}
-	case astql.OpUpdate:
+	case types.OpUpdate:
 		if err := p.renderUpdate(ast, &sql, addParam); err != nil {
 			return nil, err
 		}
-	case astql.OpDelete:
+	case types.OpDelete:
 		if err := p.renderDelete(ast, &sql, addParam); err != nil {
 			return nil, err
 		}
-	case astql.OpCount:
+	case types.OpCount:
 		if err := p.renderCount(ast, &sql, addParam); err != nil {
 			return nil, err
 		}
-	case astql.OpListen:
+	case types.OpListen:
 		p.renderListen(ast, &sql)
-	case astql.OpNotify:
+	case types.OpNotify:
 		p.renderNotify(ast, &sql, addParam)
-	case astql.OpUnlisten:
+	case types.OpUnlisten:
 		p.renderUnlisten(ast, &sql)
 	default:
 		return nil, fmt.Errorf("unsupported operation: %s", ast.Operation)
 	}
 
-	result := &astql.QueryResult{
+	return &astql.QueryResult{
 		SQL:            sql.String(),
 		RequiredParams: params,
-	}
-
-	// Extract metadata if enabled
-	if p.IncludeMetadata {
-		if metadata := p.extractQueryMetadata(ast); metadata != nil {
-			result.Metadata = *metadata
-		}
-	}
-
-	return result, nil
+	}, nil
 }
 
 func (p *Provider) renderSelectWithContext(ast *AST, sql *strings.Builder, ctx *renderContext) error {
@@ -195,7 +178,7 @@ func (p *Provider) renderSelectWithContext(ast *AST, sql *strings.Builder, ctx *
 	return nil
 }
 
-func (p *Provider) renderInsert(ast *AST, sql *strings.Builder, addParam func(astql.Param) string) error {
+func (p *Provider) renderInsert(ast *AST, sql *strings.Builder, addParam func(types.Param) string) error {
 	sql.WriteString("INSERT INTO ")
 	sql.WriteString(p.renderTable(ast.Target))
 
@@ -205,10 +188,18 @@ func (p *Provider) renderInsert(ast *AST, sql *strings.Builder, addParam func(as
 
 	// Extract field names from first value set
 	fields := make([]string, 0, len(ast.Values[0]))
-	fieldObjs := make([]astql.Field, 0, len(ast.Values[0]))
+	fieldObjs := make([]types.Field, 0, len(ast.Values[0]))
 	for field := range ast.Values[0] {
-		fields = append(fields, field.Name)
 		fieldObjs = append(fieldObjs, field)
+	}
+
+	// Sort fields by name for deterministic output
+	sort.Slice(fieldObjs, func(i, j int) bool {
+		return fieldObjs[i].Name < fieldObjs[j].Name
+	})
+
+	for _, field := range fieldObjs {
+		fields = append(fields, quoteIdentifier(field.Name))
 	}
 
 	sql.WriteString(" (")
@@ -232,7 +223,7 @@ func (p *Provider) renderInsert(ast *AST, sql *strings.Builder, addParam func(as
 		sql.WriteString(" ON CONFLICT (")
 		var conflictFields []string
 		for _, field := range ast.OnConflict.Columns {
-			conflictFields = append(conflictFields, field.Name)
+			conflictFields = append(conflictFields, quoteIdentifier(field.Name))
 		}
 		sql.WriteString(strings.Join(conflictFields, ", "))
 		sql.WriteString(") ")
@@ -242,9 +233,23 @@ func (p *Provider) renderInsert(ast *AST, sql *strings.Builder, addParam func(as
 			sql.WriteString("DO NOTHING")
 		case DoUpdate:
 			sql.WriteString("DO UPDATE SET ")
+
+			// Collect fields for sorting
+			conflictUpdateFields := make([]types.Field, 0, len(ast.OnConflict.Updates))
+			for field := range ast.OnConflict.Updates {
+				conflictUpdateFields = append(conflictUpdateFields, field)
+			}
+
+			// Sort fields by name for deterministic output
+			sort.Slice(conflictUpdateFields, func(i, j int) bool {
+				return conflictUpdateFields[i].Name < conflictUpdateFields[j].Name
+			})
+
+			// Build update clauses in sorted order
 			var updates []string
-			for field, param := range ast.OnConflict.Updates {
-				updates = append(updates, fmt.Sprintf("%s = %s", field.Name, addParam(param)))
+			for _, field := range conflictUpdateFields {
+				param := ast.OnConflict.Updates[field]
+				updates = append(updates, fmt.Sprintf("%s = %s", quoteIdentifier(field.Name), addParam(param)))
 			}
 			sql.WriteString(strings.Join(updates, ", "))
 		}
@@ -263,15 +268,28 @@ func (p *Provider) renderInsert(ast *AST, sql *strings.Builder, addParam func(as
 	return nil
 }
 
-func (p *Provider) renderUpdate(ast *AST, sql *strings.Builder, addParam func(astql.Param) string) error {
+func (p *Provider) renderUpdate(ast *AST, sql *strings.Builder, addParam func(types.Param) string) error {
 	sql.WriteString("UPDATE ")
 	sql.WriteString(p.renderTable(ast.Target))
 	sql.WriteString(" SET ")
 
 	// Render updates
+	// First collect all fields to sort them
+	updateFields := make([]types.Field, 0, len(ast.Updates))
+	for field := range ast.Updates {
+		updateFields = append(updateFields, field)
+	}
+
+	// Sort fields by name for deterministic output
+	sort.Slice(updateFields, func(i, j int) bool {
+		return updateFields[i].Name < updateFields[j].Name
+	})
+
+	// Build update clauses in sorted order
 	updates := make([]string, 0, len(ast.Updates))
-	for field, param := range ast.Updates {
-		updates = append(updates, fmt.Sprintf("%s = %s", field.Name, addParam(param)))
+	for _, field := range updateFields {
+		param := ast.Updates[field]
+		updates = append(updates, fmt.Sprintf("%s = %s", quoteIdentifier(field.Name), addParam(param)))
 	}
 	sql.WriteString(strings.Join(updates, ", "))
 
@@ -297,7 +315,7 @@ func (p *Provider) renderUpdate(ast *AST, sql *strings.Builder, addParam func(as
 	return nil
 }
 
-func (p *Provider) renderDelete(ast *AST, sql *strings.Builder, addParam func(astql.Param) string) error {
+func (p *Provider) renderDelete(ast *AST, sql *strings.Builder, addParam func(types.Param) string) error {
 	sql.WriteString("DELETE FROM ")
 	sql.WriteString(p.renderTable(ast.Target))
 
@@ -323,7 +341,7 @@ func (p *Provider) renderDelete(ast *AST, sql *strings.Builder, addParam func(as
 	return nil
 }
 
-func (p *Provider) renderCount(ast *AST, sql *strings.Builder, addParam func(astql.Param) string) error {
+func (p *Provider) renderCount(ast *AST, sql *strings.Builder, addParam func(types.Param) string) error {
 	sql.WriteString("SELECT COUNT(*) FROM ")
 	sql.WriteString(p.renderTable(ast.Target))
 
@@ -352,21 +370,33 @@ func (p *Provider) renderCount(ast *AST, sql *strings.Builder, addParam func(ast
 	return nil
 }
 
-func (*Provider) renderTable(table astql.Table) string {
+// quoteIdentifier quotes a PostgreSQL identifier to handle reserved words and special characters.
+func quoteIdentifier(name string) string {
+	// In PostgreSQL, identifiers are quoted with double quotes
+	// We need to escape any existing double quotes by doubling them
+	escaped := strings.ReplaceAll(name, `"`, `""`)
+	return `"` + escaped + `"`
+}
+
+func (*Provider) renderTable(table types.Table) string {
+	quotedName := quoteIdentifier(table.Name)
 	if table.Alias != "" {
-		return fmt.Sprintf("%s %s", table.Name, table.Alias)
+		// Aliases don't need quoting since they're restricted to single lowercase letters
+		return fmt.Sprintf("%s %s", quotedName, table.Alias)
 	}
-	return table.Name
+	return quotedName
 }
 
-func (*Provider) renderField(field astql.Field) string {
+func (*Provider) renderField(field types.Field) string {
+	quotedName := quoteIdentifier(field.Name)
 	if field.Table != "" {
-		return fmt.Sprintf("%s.%s", field.Table, field.Name)
+		// Table aliases don't need quoting (single lowercase letter)
+		return fmt.Sprintf("%s.%s", field.Table, quotedName)
 	}
-	return field.Name
+	return quotedName
 }
 
-func (p *Provider) renderAggregateExpression(aggregate AggregateFunc, field astql.Field) string {
+func (p *Provider) renderAggregateExpression(aggregate AggregateFunc, field types.Field) string {
 	switch aggregate {
 	case AggCountField:
 		return fmt.Sprintf("COUNT(%s)", p.renderField(field))
@@ -430,11 +460,15 @@ func (p *Provider) renderFieldExpressionWithContext(expr FieldExpression, ctx *r
 	return result, nil
 }
 
-func (p *Provider) renderConditionWithContext(cond astql.ConditionItem, sql *strings.Builder, ctx *renderContext) error {
+func (p *Provider) renderConditionWithContext(cond types.ConditionItem, sql *strings.Builder, ctx *renderContext) error {
 	switch c := cond.(type) {
-	case astql.Condition:
+	case types.Condition:
 		sql.WriteString(p.renderSimpleCondition(c, ctx.addParam))
-	case astql.ConditionGroup:
+	case types.ConditionGroup:
+		// Skip empty condition groups
+		if len(c.Conditions) == 0 {
+			return fmt.Errorf("empty condition group")
+		}
 		sql.WriteString("(")
 		for i, subCond := range c.Conditions {
 			if i > 0 {
@@ -445,12 +479,12 @@ func (p *Provider) renderConditionWithContext(cond astql.ConditionItem, sql *str
 			}
 		}
 		sql.WriteString(")")
-	case astql.FieldComparison:
+	case FieldComparison:
 		fmt.Fprintf(sql, "%s %s %s",
 			p.renderField(c.LeftField),
 			p.renderOperator(c.Operator),
 			p.renderField(c.RightField))
-	case astql.SubqueryCondition:
+	case SubqueryCondition:
 		if err := p.renderSubqueryCondition(c, sql, ctx); err != nil {
 			return err
 		}
@@ -460,23 +494,23 @@ func (p *Provider) renderConditionWithContext(cond astql.ConditionItem, sql *str
 	return nil
 }
 
-func (p *Provider) renderSimpleCondition(cond astql.Condition, addParam func(astql.Param) string) string {
+func (p *Provider) renderSimpleCondition(cond types.Condition, addParam func(types.Param) string) string {
 	field := p.renderField(cond.Field)
 	op := p.renderOperator(cond.Operator)
 
 	switch cond.Operator {
-	case astql.IsNull:
+	case types.IsNull:
 		return fmt.Sprintf("%s IS NULL", field)
-	case astql.IsNotNull:
+	case types.IsNotNull:
 		return fmt.Sprintf("%s IS NOT NULL", field)
 	default:
 		return fmt.Sprintf("%s %s %s", field, op, addParam(cond.Value))
 	}
 }
 
-func (p *Provider) renderSubqueryCondition(cond astql.SubqueryCondition, sql *strings.Builder, ctx *renderContext) error {
+func (p *Provider) renderSubqueryCondition(cond SubqueryCondition, sql *strings.Builder, ctx *renderContext) error {
 	switch cond.Operator {
-	case astql.EXISTS, astql.NotExists:
+	case types.EXISTS, types.NotExists:
 		// EXISTS/NOT EXISTS don't need a field
 		sql.WriteString(string(cond.Operator))
 		sql.WriteString(" ")
@@ -501,7 +535,7 @@ func (p *Provider) renderSubqueryCondition(cond astql.SubqueryCondition, sql *st
 	return nil
 }
 
-func (p *Provider) renderSubquery(subquery astql.Subquery, sql *strings.Builder, ctx *renderContext) error {
+func (p *Provider) renderSubquery(subquery Subquery, sql *strings.Builder, ctx *renderContext) error {
 	// Create a new context for the subquery
 	subCtx, err := ctx.withSubquery()
 	if err != nil {
@@ -509,7 +543,7 @@ func (p *Provider) renderSubquery(subquery astql.Subquery, sql *strings.Builder,
 	}
 
 	switch ast := subquery.AST.(type) {
-	case *astql.QueryAST:
+	case *types.QueryAST:
 		// Render basic AST as SELECT
 		sql.WriteString("SELECT ")
 		if len(ast.Fields) == 0 {
@@ -634,31 +668,31 @@ func (p *Provider) renderMathExpression(expr MathExpression, ctx *renderContext)
 	return sql.String(), nil
 }
 
-func (*Provider) renderOperator(op astql.Operator) string {
+func (*Provider) renderOperator(op types.Operator) string {
 	switch op {
-	case astql.EQ:
+	case types.EQ:
 		return "="
-	case astql.NE:
+	case types.NE:
 		return "!="
-	case astql.GT:
+	case types.GT:
 		return ">"
-	case astql.GE:
+	case types.GE:
 		return ">="
-	case astql.LT:
+	case types.LT:
 		return "<"
-	case astql.LE:
+	case types.LE:
 		return "<="
-	case astql.LIKE:
+	case types.LIKE:
 		return "LIKE"
-	case astql.NotLike:
+	case types.NotLike:
 		return "NOT LIKE"
-	case astql.IN:
+	case types.IN:
 		return "IN"
-	case astql.NotIn:
+	case types.NotIn:
 		return "NOT IN"
-	case astql.EXISTS:
+	case types.EXISTS:
 		return "EXISTS"
-	case astql.NotExists:
+	case types.NotExists:
 		return "NOT EXISTS"
 	default:
 		return string(op)
@@ -672,7 +706,7 @@ func (*Provider) renderListen(ast *AST, sql *strings.Builder) {
 	sql.WriteString(channelName)
 }
 
-func (*Provider) renderNotify(ast *AST, sql *strings.Builder, addParam func(astql.Param) string) {
+func (*Provider) renderNotify(ast *AST, sql *strings.Builder, addParam func(types.Param) string) {
 	// Channel name is derived from table name (e.g., "users" -> "users_changes")
 	channelName := ast.Target.Name + "_changes"
 	sql.WriteString("NOTIFY ")
@@ -690,76 +724,4 @@ func (*Provider) renderUnlisten(ast *AST, sql *strings.Builder) {
 	channelName := ast.Target.Name + "_changes"
 	sql.WriteString("UNLISTEN ")
 	sql.WriteString(channelName)
-}
-
-// extractQueryMetadata builds metadata about the query.
-func (*Provider) extractQueryMetadata(ast *AST) *astql.QueryMetadata {
-	tableMeta := astql.GetTableMetadata(ast.Target.Name)
-	metadata := &astql.QueryMetadata{
-		Operation: ast.Operation,
-		Table:     *tableMeta,
-	}
-
-	// Determine result type
-	switch ast.Operation {
-	case astql.OpSelect:
-		if ast.Limit != nil && *ast.Limit == 1 {
-			metadata.ResultType = "single"
-		} else {
-			metadata.ResultType = "multiple"
-		}
-	case astql.OpInsert, astql.OpUpdate, astql.OpDelete:
-		if len(ast.Returning) > 0 {
-			metadata.ResultType = "single"
-		} else {
-			metadata.ResultType = "affected"
-		}
-	case astql.OpCount:
-		metadata.ResultType = ResultTypeCount
-	}
-
-	// Extract returned fields
-	if ast.Operation == astql.OpSelect {
-		if len(ast.Fields) == 0 && len(ast.FieldExpressions) == 0 {
-			// SELECT * - return all fields from table metadata
-			metadata.ReturnedFields = metadata.Table.Fields
-		} else {
-			// Specific fields
-			for _, field := range ast.Fields {
-				if fieldMeta := astql.GetFieldMetadata(ast.Target.Name, field.Name); fieldMeta != nil {
-					metadata.ReturnedFields = append(metadata.ReturnedFields, *fieldMeta)
-				}
-			}
-			// TODO: Handle field expressions (aggregates, aliases)
-		}
-	} else if len(ast.Returning) > 0 {
-		// RETURNING clause
-		for _, field := range ast.Returning {
-			if fieldMeta := astql.GetFieldMetadata(ast.Target.Name, field.Name); fieldMeta != nil {
-				metadata.ReturnedFields = append(metadata.ReturnedFields, *fieldMeta)
-			}
-		}
-	}
-
-	// Extract modified fields for INSERT/UPDATE
-	if ast.Operation == astql.OpInsert && len(ast.Values) > 0 {
-		// Get fields from first value set
-		for field := range ast.Values[0] {
-			if fieldMeta := astql.GetFieldMetadata(ast.Target.Name, field.Name); fieldMeta != nil {
-				metadata.ModifiedFields = append(metadata.ModifiedFields, *fieldMeta)
-			}
-		}
-	} else if ast.Operation == astql.OpUpdate {
-		// Get fields from updates map
-		for field := range ast.Updates {
-			if fieldMeta := astql.GetFieldMetadata(ast.Target.Name, field.Name); fieldMeta != nil {
-				metadata.ModifiedFields = append(metadata.ModifiedFields, *fieldMeta)
-			}
-		}
-	}
-
-	// Extract parameters would require walking the AST to find all Param references
-	// For now, the RequiredParams list serves this purpose
-
-	return metadata
 }

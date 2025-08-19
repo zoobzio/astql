@@ -3,7 +3,7 @@ package postgres
 import (
 	"fmt"
 
-	"github.com/zoobzio/astql"
+	"github.com/zoobzio/astql/internal/types"
 )
 
 // JoinType represents the type of SQL join.
@@ -17,8 +17,8 @@ const (
 
 // Join represents a SQL JOIN clause.
 type Join struct {
-	On    astql.ConditionItem
-	Table astql.Table
+	On    types.ConditionItem
+	Table types.Table
 	Type  JoinType
 }
 
@@ -32,9 +32,9 @@ const (
 
 // ConflictClause represents PostgreSQL's ON CONFLICT clause.
 type ConflictClause struct {
-	Updates map[astql.Field]astql.Param
+	Updates map[types.Field]types.Param
 	Action  ConflictAction
-	Columns []astql.Field
+	Columns []types.Field
 }
 
 // AggregateFunc represents SQL aggregate functions.
@@ -52,7 +52,7 @@ const (
 
 // FieldExpression represents a field with optional aggregate function or SQL expression.
 type FieldExpression struct {
-	Field     astql.Field
+	Field     types.Field
 	Aggregate AggregateFunc
 	Case      *CaseExpression     // For CASE expressions in SELECT
 	Coalesce  *CoalesceExpression // For COALESCE expressions
@@ -63,18 +63,18 @@ type FieldExpression struct {
 
 // AST extends QueryAST with PostgreSQL-specific features.
 type AST struct {
-	*astql.QueryAST
+	*types.QueryAST
 	OnConflict       *ConflictClause
 	Joins            []Join
-	GroupBy          []astql.Field
-	Having           []astql.Condition
+	GroupBy          []types.Field
+	Having           []types.Condition
 	FieldExpressions []FieldExpression
-	Returning        []astql.Field
+	Returning        []types.Field
 	Distinct         bool
 }
 
 // NewAST creates a new PostgreSQL AST from a base QueryAST.
-func NewAST(base *astql.QueryAST) *AST {
+func NewAST(base *types.QueryAST) *AST {
 	return &AST{
 		QueryAST: base,
 	}
@@ -82,25 +82,36 @@ func NewAST(base *astql.QueryAST) *AST {
 
 // Validate extends base validation with PostgreSQL-specific rules.
 func (ast *AST) Validate() error {
-	// First run base validation
-	if err := ast.QueryAST.Validate(); err != nil {
-		return err
+	// Custom validation for PostgreSQL-specific operations first
+	switch ast.Operation {
+	case types.OpNotify:
+		// PostgreSQL NOTIFY is valid with or without payload
+		// No additional validation needed
+
+	case types.OpListen, types.OpUnlisten:
+		// These operations don't need payload validation
+
+	default:
+		// For other operations, use base validation
+		if err := ast.QueryAST.Validate(); err != nil {
+			return err
+		}
 	}
 
 	// PostgreSQL-specific validation
 	switch ast.Operation {
-	case astql.OpSelect:
+	case types.OpSelect:
 		// If using GROUP BY, all non-aggregate fields in SELECT must be in GROUP BY
 		// (This is a simplified check - real implementation would be more thorough)
 		// Having requires GROUP BY which is already validated elsewhere
 
-	case astql.OpInsert:
+	case types.OpInsert:
 		// ON CONFLICT only makes sense with INSERT
 		if ast.OnConflict != nil && len(ast.OnConflict.Columns) == 0 {
 			return fmt.Errorf("ON CONFLICT requires at least one column")
 		}
 
-	case astql.OpUpdate, astql.OpDelete:
+	case types.OpUpdate, types.OpDelete:
 		// These operations can have RETURNING but not other SELECT features
 		if ast.Distinct || len(ast.Joins) > 0 || len(ast.GroupBy) > 0 {
 			return fmt.Errorf("%s cannot have SELECT features like DISTINCT, JOIN, or GROUP BY", ast.Operation)

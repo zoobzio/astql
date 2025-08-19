@@ -3,42 +3,28 @@ package astql
 import (
 	"fmt"
 	"strings"
+
+	"github.com/zoobzio/astql/internal/types"
 )
 
-// ParamType represents the type of parameter reference.
-type ParamType int
-
-const (
-	ParamNamed ParamType = iota
-	ParamPositional
-)
-
-// Param represents a parameter reference in a query.
-type Param struct {
-	Name  string
-	Type  ParamType
-	Index int
-}
-
-// This is the primary way to reference user values in queries.
-func P(name string) Param {
+// TryP creates a validated parameter reference, returning an error if invalid.
+func TryP(name string) (types.Param, error) {
 	// Validate parameter name
 	if !isValidParamName(name) {
-		panic(fmt.Errorf("invalid parameter name '%s': must be alphanumeric with underscores, starting with letter", name))
+		return types.Param{}, fmt.Errorf("invalid parameter name '%s': must be alphanumeric with underscores, starting with letter", name)
 	}
 
-	return Param{
-		Type: ParamNamed,
-		Name: name,
-	}
+	return types.Param{Name: name}, nil
 }
 
-// P1, P2, etc. are shortcuts for positional parameters.
-func P1() Param { return Param{Type: ParamPositional, Index: 1} }
-func P2() Param { return Param{Type: ParamPositional, Index: 2} }
-func P3() Param { return Param{Type: ParamPositional, Index: 3} }
-func P4() Param { return Param{Type: ParamPositional, Index: 4} }
-func P5() Param { return Param{Type: ParamPositional, Index: 5} }
+// P is the primary way to reference user values in queries.
+func P(name string) types.Param {
+	p, err := TryP(name)
+	if err != nil {
+		panic(err)
+	}
+	return p
+}
 
 // Only allows alphanumeric characters and underscores, must start with letter.
 func isValidParamName(name string) bool {

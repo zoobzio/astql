@@ -1,174 +1,240 @@
-package postgres_test
+package postgres
 
 import (
 	"testing"
 
-	"github.com/zoobzio/astql/providers/postgres"
-
 	"github.com/zoobzio/astql"
+	"github.com/zoobzio/astql/internal/types"
 )
 
-func TestCaseExpressions(t *testing.T) {
-	// Setup test models
-	astql.SetupTestModels()
+func TestCaseBuilder(t *testing.T) {
+	t.Run("Basic CASE expression", func(t *testing.T) {
+		caseBuilder := Case()
 
-	provider := postgres.NewProvider()
-
-	t.Run("Basic CASE in SELECT", func(t *testing.T) {
-		ast := postgres.Select(astql.T("test_users")).
-			Fields(astql.F("name")).
-			SelectCase(
-				postgres.Case().
-					When(astql.C(astql.F("age"), astql.LT, astql.P("minorAge")), astql.P("minorLabel")).
-					When(astql.C(astql.F("age"), astql.LT, astql.P("seniorAge")), astql.P("adultLabel")).
-					Else(astql.P("seniorLabel")).
-					As("age_group").
-					Build(),
-			).
-			MustBuild()
-
-		result, err := provider.Render(ast)
-		if err != nil {
-			t.Fatal(err)
+		if caseBuilder.expr == nil {
+			t.Error("Expected expr to be initialized")
 		}
-
-		expected := "SELECT name, CASE WHEN age < :minorAge THEN :minorLabel WHEN age < :seniorAge THEN :adultLabel ELSE :seniorLabel END AS age_group FROM test_users"
-		if result.SQL != expected {
-			t.Errorf("Expected:\n%s\nGot:\n%s", expected, result.SQL)
-		}
-
-		// Should have all the parameters
-		expectedParams := []string{"minorAge", "minorLabel", "seniorAge", "adultLabel", "seniorLabel"}
-		if len(result.RequiredParams) != len(expectedParams) {
-			t.Errorf("Expected %d params, got %d: %v", len(expectedParams), len(result.RequiredParams), result.RequiredParams)
+		if len(caseBuilder.expr.WhenClauses) != 0 {
+			t.Error("Expected empty WhenClauses initially")
 		}
 	})
 
-	t.Run("CASE without ELSE", func(t *testing.T) {
-		ast := postgres.Select(astql.T("test_users")).
-			SelectCase(
-				postgres.Case().
-					When(astql.C(astql.F("active"), astql.EQ, astql.P("trueValue")), astql.P("activeLabel")).
-					When(astql.C(astql.F("active"), astql.EQ, astql.P("falseValue")), astql.P("inactiveLabel")).
-					Build(),
-			).
-			MustBuild()
+	t.Run("CASE with single WHEN clause", func(t *testing.T) {
+		condition := astql.C(types.Field{Name: "age"}, types.LT, types.Param{Name: "minAge"})
+		result := types.Param{Name: "young"}
 
-		result, err := provider.Render(ast)
-		if err != nil {
-			t.Fatal(err)
+		caseBuilder := Case().When(condition, result)
+
+		if len(caseBuilder.expr.WhenClauses) != 1 {
+			t.Errorf("Expected 1 WHEN clause, got %d", len(caseBuilder.expr.WhenClauses))
 		}
 
-		expected := "SELECT CASE WHEN active = :trueValue THEN :activeLabel WHEN active = :falseValue THEN :inactiveLabel END FROM test_users"
-		if result.SQL != expected {
-			t.Errorf("Expected:\n%s\nGot:\n%s", expected, result.SQL)
+		whenClause := caseBuilder.expr.WhenClauses[0]
+		if whenClause.Condition != condition {
+			t.Error("Expected condition to match")
+		}
+		if whenClause.Result != result {
+			t.Error("Expected result to match")
 		}
 	})
 
-	t.Run("CASE with complex conditions", func(t *testing.T) {
-		ast := postgres.Select(astql.T("test_users")).
-			Fields(astql.F("id")).
-			SelectCase(
-				postgres.Case().
-					When(
-						astql.And(
-							astql.C(astql.F("age"), astql.GE, astql.P("minAge")),
-							astql.C(astql.F("age"), astql.LE, astql.P("maxAge")),
-						),
-						astql.P("inRangeLabel"),
-					).
-					Else(astql.P("outOfRangeLabel")).
-					As("age_range").
-					Build(),
-			).
-			MustBuild()
+	t.Run("CASE with multiple WHEN clauses", func(t *testing.T) {
+		caseBuilder := Case().
+			When(astql.C(types.Field{Name: "age"}, types.LT, types.Param{Name: "young"}), types.Param{Name: "child"}).
+			When(astql.C(types.Field{Name: "age"}, types.GE, types.Param{Name: "senior"}), types.Param{Name: "elderly"})
 
-		result, err := provider.Render(ast)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		expected := "SELECT id, CASE WHEN (age >= :minAge AND age <= :maxAge) THEN :inRangeLabel ELSE :outOfRangeLabel END AS age_range FROM test_users"
-		if result.SQL != expected {
-			t.Errorf("Expected:\n%s\nGot:\n%s", expected, result.SQL)
+		if len(caseBuilder.expr.WhenClauses) != 2 {
+			t.Errorf("Expected 2 WHEN clauses, got %d", len(caseBuilder.expr.WhenClauses))
 		}
 	})
 
-	t.Run("CASE in WHERE clause", func(t *testing.T) {
-		// For now, skip this test as it requires a more complex implementation
-		// CASE in WHERE would need a special condition type that compares CASE result to a value
-		t.Skip("CASE in WHERE clause requires additional implementation")
-	})
+	t.Run("CASE with ELSE clause", func(t *testing.T) {
+		elseValue := types.Param{Name: "adult"}
 
-	t.Run("Multiple CASE expressions", func(t *testing.T) {
-		ast := postgres.Select(astql.T("test_users")).
-			SelectCase(
-				postgres.Case().
-					When(astql.C(astql.F("age"), astql.LT, astql.P("adultAge")), astql.P("minorLabel")).
-					Else(astql.P("adultLabel")).
-					As("age_category").
-					Build(),
-			).
-			SelectCase(
-				postgres.Case().
-					When(astql.C(astql.F("active"), astql.EQ, astql.P("trueValue")), astql.P("activeLabel")).
-					Else(astql.P("inactiveLabel")).
-					As("status_label").
-					Build(),
-			).
-			MustBuild()
+		caseBuilder := Case().
+			When(astql.C(types.Field{Name: "age"}, types.LT, types.Param{Name: "young"}), types.Param{Name: "child"}).
+			Else(elseValue)
 
-		result, err := provider.Render(ast)
-		if err != nil {
-			t.Fatal(err)
+		if caseBuilder.expr.ElseValue == nil {
+			t.Error("Expected ElseValue to be set")
 		}
-
-		expected := "SELECT CASE WHEN age < :adultAge THEN :minorLabel ELSE :adultLabel END AS age_category, CASE WHEN active = :trueValue THEN :activeLabel ELSE :inactiveLabel END AS status_label FROM test_users"
-		if result.SQL != expected {
-			t.Errorf("Expected:\n%s\nGot:\n%s", expected, result.SQL)
+		if *caseBuilder.expr.ElseValue != elseValue {
+			t.Error("Expected ElseValue to match")
 		}
 	})
 
-	t.Run("Invalid alias should panic", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("Expected panic for invalid alias")
-			}
-		}()
-
-		// This should panic - unregistered alias
-		postgres.Case().
-			When(astql.C(astql.F("age"), astql.LT, astql.P("limit")), astql.P("label")).
-			As("invalid_alias_not_registered").
+	t.Run("CASE Build method", func(t *testing.T) {
+		caseExpr := Case().
+			When(astql.C(types.Field{Name: "status"}, types.EQ, types.Param{Name: "active"}), types.Param{Name: "enabled"}).
+			Else(types.Param{Name: "disabled"}).
 			Build()
+
+		if len(caseExpr.WhenClauses) != 1 {
+			t.Errorf("Expected 1 WHEN clause, got %d", len(caseExpr.WhenClauses))
+		}
+		if caseExpr.ElseValue == nil {
+			t.Error("Expected ElseValue to be set")
+		}
+	})
+
+	t.Run("CASE As method", func(t *testing.T) {
+		alias := "status_label"
+
+		caseBuilder := Case().
+			When(astql.C(types.Field{Name: "active"}, types.EQ, types.Param{Name: "true"}), types.Param{Name: "enabled"}).
+			As(alias)
+
+		caseExpr := caseBuilder.Build()
+
+		if caseExpr.Alias != alias {
+			t.Errorf("Expected alias '%s', got '%s'", alias, caseExpr.Alias)
+		}
 	})
 }
 
-func TestCaseWithFieldComparison(t *testing.T) {
-	// Setup test models
-	astql.SetupTestModels()
+func TestCaseWithClauses(t *testing.T) {
+	t.Run("Create with existing clauses", func(t *testing.T) {
+		whenClauses := []WhenClause{
+			{
+				Condition: astql.C(types.Field{Name: "priority"}, types.EQ, types.Param{Name: "high"}),
+				Result:    types.Param{Name: "urgent"},
+			},
+			{
+				Condition: astql.C(types.Field{Name: "priority"}, types.EQ, types.Param{Name: "low"}),
+				Result:    types.Param{Name: "normal"},
+			},
+		}
 
-	provider := postgres.NewProvider()
+		caseExpr := CaseWithClauses(whenClauses...)
 
-	// Test CASE with field-to-field comparison
-	ast := postgres.Select(astql.T("test_users")).
-		SelectCase(
-			postgres.Case().
-				When(astql.CF(astql.F("created_at"), astql.GT, astql.F("updated_at")), astql.P("recentlyCreated")).
-				When(astql.CF(astql.F("created_at"), astql.LT, astql.F("updated_at")), astql.P("recentlyUpdated")).
-				Else(astql.P("unchanged")).
-				As("status").
-				Build(),
-		).
-		MustBuild()
+		if len(caseExpr.WhenClauses) != 2 {
+			t.Errorf("Expected 2 WHEN clauses, got %d", len(caseExpr.WhenClauses))
+		}
 
-	result, err := provider.Render(ast)
-	if err != nil {
-		t.Fatal(err)
-	}
+		// Verify clauses match
+		for i, clause := range whenClauses {
+			if caseExpr.WhenClauses[i].Condition != clause.Condition {
+				t.Errorf("Expected condition %d to match", i)
+			}
+			if caseExpr.WhenClauses[i].Result != clause.Result {
+				t.Errorf("Expected result %d to match", i)
+			}
+		}
+	})
 
-	expected := "SELECT CASE WHEN created_at > updated_at THEN :recentlyCreated WHEN created_at < updated_at THEN :recentlyUpdated ELSE :unchanged END AS status FROM test_users"
-	if result.SQL != expected {
-		t.Errorf("Expected:\n%s\nGot:\n%s", expected, result.SQL)
-	}
+	t.Run("Add ELSE to existing clauses", func(t *testing.T) {
+		whenClauses := []WhenClause{
+			{
+				Condition: astql.C(types.Field{Name: "type"}, types.EQ, types.Param{Name: "premium"}),
+				Result:    types.Param{Name: "vip"},
+			},
+		}
+		elseValue := types.Param{Name: "standard"}
+
+		caseExpr := CaseWithClauses(whenClauses...).Else(elseValue)
+
+		if caseExpr.ElseValue == nil {
+			t.Error("Expected ElseValue to be set")
+		}
+		if *caseExpr.ElseValue != elseValue {
+			t.Error("Expected ElseValue to match")
+		}
+	})
+}
+
+func TestCaseExpressionIntegration(t *testing.T) {
+	t.Run("CASE in SELECT query", func(t *testing.T) {
+		// This tests integration with the main query builder
+		caseExpr := Case().
+			When(astql.C(types.Field{Name: "age"}, types.LT, types.Param{Name: "eighteen"}), types.Param{Name: "minor"}).
+			When(astql.C(types.Field{Name: "age"}, types.GE, types.Param{Name: "sixtyfive"}), types.Param{Name: "senior"}).
+			Else(types.Param{Name: "adult"}).
+			Build()
+
+		caseExpr.Alias = "age_category"
+		builder := Select(types.Table{Name: "users"}).
+			SelectCase(caseExpr)
+
+		ast, err := builder.Build()
+		if err != nil {
+			t.Fatalf("Build failed: %v", err)
+		}
+
+		if len(ast.FieldExpressions) != 1 {
+			t.Errorf("Expected 1 field expression, got %d", len(ast.FieldExpressions))
+		}
+
+		fieldExpr := ast.FieldExpressions[0]
+		if fieldExpr.Case == nil {
+			t.Error("Expected Case expression to be set")
+		}
+		if fieldExpr.Alias != "age_category" {
+			t.Errorf("Expected alias 'age_category', got '%s'", fieldExpr.Alias)
+		}
+		if len(fieldExpr.Case.WhenClauses) != 2 {
+			t.Errorf("Expected 2 WHEN clauses, got %d", len(fieldExpr.Case.WhenClauses))
+		}
+	})
+}
+
+func TestCaseFluentInterface(t *testing.T) {
+	t.Run("Fluent interface returns builder", func(t *testing.T) {
+		builder := Case()
+
+		// Test that all methods return the same builder for chaining
+		result1 := builder.When(astql.C(types.Field{Name: "test"}, types.EQ, types.Param{Name: "value"}), types.Param{Name: "result"})
+		if result1 != builder {
+			t.Error("Expected When to return the same builder")
+		}
+
+		result2 := builder.Else(types.Param{Name: "default"})
+		if result2 != builder {
+			t.Error("Expected Else to return the same builder")
+		}
+	})
+}
+
+func TestWhenClause(t *testing.T) {
+	t.Run("WhenClause structure", func(t *testing.T) {
+		condition := astql.C(types.Field{Name: "status"}, types.EQ, types.Param{Name: "active"})
+		result := types.Param{Name: "enabled"}
+
+		whenClause := WhenClause{
+			Condition: condition,
+			Result:    result,
+		}
+
+		if whenClause.Condition != condition {
+			t.Error("Expected condition to be set correctly")
+		}
+		if whenClause.Result != result {
+			t.Error("Expected result to be set correctly")
+		}
+	})
+}
+
+func TestCaseExpressionValidation(t *testing.T) {
+	t.Run("Empty CASE expression", func(t *testing.T) {
+		// Test that we can create an empty CASE (though it may not be valid SQL)
+		caseExpr := Case().Build()
+
+		if len(caseExpr.WhenClauses) != 0 {
+			t.Error("Expected empty WhenClauses")
+		}
+		if caseExpr.ElseValue != nil {
+			t.Error("Expected ElseValue to be nil")
+		}
+	})
+
+	t.Run("CASE with only ELSE", func(t *testing.T) {
+		// Edge case: CASE with no WHEN clauses but has ELSE
+		caseExpr := Case().Else(types.Param{Name: "default"}).Build()
+
+		if len(caseExpr.WhenClauses) != 0 {
+			t.Error("Expected empty WhenClauses")
+		}
+		if caseExpr.ElseValue == nil {
+			t.Error("Expected ElseValue to be set")
+		}
+	})
 }

@@ -1,18 +1,20 @@
 package postgres
 
-import "github.com/zoobzio/astql"
+import (
+	"github.com/zoobzio/astql/internal/types"
+)
 
 // CaseExpression represents a SQL CASE expression.
 type CaseExpression struct {
-	ElseValue   *astql.Param
+	ElseValue   *types.Param
 	Alias       string
 	WhenClauses []WhenClause
 }
 
 // WhenClause represents a single WHEN...THEN clause.
 type WhenClause struct {
-	Condition astql.ConditionItem // Reuses existing validation!
-	Result    astql.Param         // Parameter reference only
+	Condition types.ConditionItem // Reuses existing validation!
+	Result    types.Param         // Parameter reference only
 }
 
 // CaseBuilder provides fluent API for building CASE expressions.
@@ -28,7 +30,7 @@ func Case() *CaseBuilder {
 }
 
 // When adds a WHEN...THEN clause.
-func (b *CaseBuilder) When(condition astql.ConditionItem, result astql.Param) *CaseBuilder {
+func (b *CaseBuilder) When(condition types.ConditionItem, result types.Param) *CaseBuilder {
 	b.expr.WhenClauses = append(b.expr.WhenClauses, WhenClause{
 		Condition: condition,
 		Result:    result,
@@ -37,7 +39,7 @@ func (b *CaseBuilder) When(condition astql.ConditionItem, result astql.Param) *C
 }
 
 // Else sets the ELSE clause.
-func (b *CaseBuilder) Else(result astql.Param) *CaseBuilder {
+func (b *CaseBuilder) Else(result types.Param) *CaseBuilder {
 	b.expr.ElseValue = &result
 	return b
 }
@@ -49,10 +51,6 @@ func (b *CaseBuilder) Build() CaseExpression {
 
 // As adds an alias to the CASE expression (for SELECT clauses).
 func (b *CaseBuilder) As(alias string) *CaseBuilder {
-	// Validate alias against registered field aliases
-	if err := astql.ValidateFieldAlias(alias); err != nil {
-		panic(err) // Consistent with other validation failures
-	}
 	b.expr.Alias = alias
 	return b
 }
@@ -65,7 +63,7 @@ func CaseWithClauses(whenClauses ...WhenClause) CaseExpression {
 }
 
 // Else adds an else clause to a CaseExpression.
-func (c CaseExpression) Else(value astql.Param) CaseExpression {
+func (c CaseExpression) Else(value types.Param) CaseExpression {
 	c.ElseValue = &value
 	return c
 }

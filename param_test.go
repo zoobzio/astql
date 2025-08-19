@@ -1,131 +1,209 @@
-package astql_test
+package astql
 
 import (
+	"strings"
 	"testing"
-
-	"github.com/zoobzio/astql"
 )
 
-func TestParamValidation(t *testing.T) {
-	t.Run("Valid parameter names", func(t *testing.T) {
-		validNames := []string{
-			"userId",
-			"user_id",
-			"firstName",
-			"age",
-			"minAge",
-			"max_value",
-			"param123",
-			"p1",
-		}
+func TestP(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		// Valid cases
+		{"Simple name", "userId", false},
+		{"With underscore", "user_id", false},
+		{"With numbers", "user123", false},
+		{"Mixed case", "UserID", false},
+		{"Long name", "very_long_parameter_name_123", false},
 
-		for _, name := range validNames {
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						t.Errorf("Valid param name '%s' caused panic: %v", name, r)
-					}
-				}()
+		// Invalid cases
+		{"Empty string", "", true},
+		{"Starts with number", "123user", true},
+		{"Starts with underscore", "_user", true},
+		{"Contains space", "user id", true},
+		{"Contains dash", "user-id", true},
+		{"Contains dot", "user.id", true},
+		{"SQL injection attempt", "user'; DROP TABLE--", true},
+		{"Contains comment", "user/*comment*/", true},
+		{"Contains quote", "user'id", true},
+		{"Contains double quote", "user\"id", true},
+		{"Contains semicolon", "user;id", true},
+		{"Contains backslash", "user\\id", true},
 
-				param := astql.P(name)
-				if param.Name != name {
-					t.Errorf("Expected param name '%s', got '%s'", name, param.Name)
-				}
-			}()
-		}
-	})
+		// SQL keywords
+		{"SELECT keyword", "select", true},
+		{"INSERT keyword", "insert", true},
+		{"UPDATE keyword", "update", true},
+		{"DELETE keyword", "delete", true},
+		{"WHERE keyword", "where", true},
+		{"FROM keyword", "from", true},
+		{"AND keyword", "and", true},
+		{"OR keyword", "or", true},
+		{"DROP keyword", "drop", true},
+		{"CREATE keyword", "create", true},
+		{"ALTER keyword", "alter", true},
+		{"TABLE keyword", "table", true},
+		{"UNION keyword", "union", true},
+		{"JOIN keyword", "join", true},
+		{"NULL keyword", "null", true},
+		{"TRUE keyword", "true", true},
+		{"FALSE keyword", "false", true},
+	}
 
-	t.Run("Invalid parameter names", func(t *testing.T) {
-		invalidNames := []struct {
-			name   string
-			reason string
-		}{
-			{"", "empty string"},
-			{"123param", "starts with number"},
-			{"_param", "starts with underscore"},
-			{"param-name", "contains hyphen"},
-			{"param name", "contains space"},
-			{"param;", "contains semicolon"},
-			{"param'", "contains quote"},
-			{"param--", "contains SQL comment"},
-			{"select", "SQL keyword"},
-			{"SELECT", "SQL keyword uppercase"},
-			{"drop", "dangerous SQL keyword"},
-			{"table", "SQL keyword"},
-			{"where", "SQL keyword"},
-			{"union", "SQL keyword"},
-			{"param/*test*/", "contains SQL comment"},
-			{`param"test"`, "contains quotes"},
-			{"param\\", "contains backslash"},
-		}
-
-		for _, test := range invalidNames {
-			func() {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.wantErr {
 				defer func() {
 					if r := recover(); r == nil {
-						t.Errorf("Invalid param name '%s' (%s) did not panic", test.name, test.reason)
+						t.Errorf("P(%q) should have panicked", tt.input)
 					}
 				}()
-
-				astql.P(test.name)
-			}()
-		}
-	})
-
-	t.Run("Positional parameters don't need validation", func(t *testing.T) {
-		// These should all work without validation
-		p1 := astql.P1()
-		p2 := astql.P2()
-		p3 := astql.P3()
-
-		if p1.Type != astql.ParamPositional || p1.Index != 1 {
-			t.Error("P1() not working correctly")
-		}
-		if p2.Type != astql.ParamPositional || p2.Index != 2 {
-			t.Error("P2() not working correctly")
-		}
-		if p3.Type != astql.ParamPositional || p3.Index != 3 {
-			t.Error("P3() not working correctly")
-		}
-	})
-
-	t.Run("Positional parameters P4 and P5", func(t *testing.T) {
-		// Test P4
-		p4 := astql.P4()
-		if p4.Type != astql.ParamPositional {
-			t.Errorf("Expected positional parameter type, got %v", p4.Type)
-		}
-		if p4.Index != 4 {
-			t.Errorf("Expected index 4, got %d", p4.Index)
-		}
-
-		// Test P5
-		p5 := astql.P5()
-		if p5.Type != astql.ParamPositional {
-			t.Errorf("Expected positional parameter type, got %v", p5.Type)
-		}
-		if p5.Index != 5 {
-			t.Errorf("Expected index 5, got %d", p5.Index)
-		}
-	})
-
-	t.Run("All positional parameters have correct indices", func(t *testing.T) {
-		params := []astql.Param{
-			astql.P1(),
-			astql.P2(),
-			astql.P3(),
-			astql.P4(),
-			astql.P5(),
-		}
-
-		for i, p := range params {
-			expectedIndex := i + 1
-			if p.Index != expectedIndex {
-				t.Errorf("P%d() returned index %d, expected %d", expectedIndex, p.Index, expectedIndex)
+				P(tt.input)
+			} else {
+				param := P(tt.input)
+				if param.Name != tt.input {
+					t.Errorf("Expected name '%s', got '%s'", tt.input, param.Name)
+				}
 			}
-			if p.Type != astql.ParamPositional {
-				t.Errorf("P%d() returned type %v, expected ParamPositional", expectedIndex, p.Type)
+		})
+	}
+}
+
+func TestIsValidParamName(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		// Valid cases
+		{"Simple lowercase", "userid", true},
+		{"Simple uppercase", "USERID", true},
+		{"Mixed case", "userId", true},
+		{"With numbers", "user123", true},
+		{"With underscore", "user_id", true},
+		{"Complex valid", "user_name_123", true},
+
+		// Invalid - empty or bad start
+		{"Empty", "", false},
+		{"Starts with number", "1user", false},
+		{"Starts with underscore", "_user", false},
+
+		// Invalid - special characters
+		{"With space", "user id", false},
+		{"With dash", "user-id", false},
+		{"With dot", "user.id", false},
+		{"With semicolon", "user;", false},
+		{"With quote", "user'", false},
+		{"With double quote", "user\"", false},
+		{"With comment start", "user--", false},
+		{"With comment block", "user/*", false},
+		{"With backslash", "user\\", false},
+
+		// Invalid - SQL keywords (case insensitive)
+		{"select lowercase", "select", false},
+		{"SELECT uppercase", "SELECT", false},
+		{"Select mixed", "Select", false},
+		{"where", "where", false},
+		{"from", "from", false},
+		{"insert", "insert", false},
+		{"update", "update", false},
+		{"delete", "delete", false},
+		{"drop", "drop", false},
+		{"create", "create", false},
+		{"alter", "alter", false},
+		{"table", "table", false},
+		{"and", "and", false},
+		{"or", "or", false},
+		{"not", "not", false},
+		{"null", "null", false},
+		{"true", "true", false},
+		{"false", "false", false},
+		{"union", "union", false},
+		{"join", "join", false},
+		{"having", "having", false},
+		{"group", "group", false},
+		{"order", "order", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isValidParamName(tt.input)
+			if got != tt.want {
+				t.Errorf("isValidParamName(%q) = %v, want %v", tt.input, got, tt.want)
 			}
+		})
+	}
+}
+
+func TestIsValidParamNameCaseInsensitive(t *testing.T) {
+	// Test that SQL keywords are rejected regardless of case
+	keywords := []string{"SELECT", "select", "SeLeCt", "INSERT", "insert", "WHERE", "where"}
+
+	for _, keyword := range keywords {
+		if isValidParamName(keyword) {
+			t.Errorf("isValidParamName(%q) should return false for SQL keyword", keyword)
 		}
-	})
+	}
+}
+
+func TestPPanicMessage(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			errMsg := r.(error).Error()
+			if !strings.Contains(errMsg, "invalid parameter name") {
+				t.Errorf("Expected error message to contain 'invalid parameter name', got: %s", errMsg)
+			}
+			if !strings.Contains(errMsg, "must be alphanumeric with underscores, starting with letter") {
+				t.Errorf("Expected error message to contain validation rules, got: %s", errMsg)
+			}
+		} else {
+			t.Error("Expected P() to panic with invalid input")
+		}
+	}()
+
+	P("123invalid") // Should panic
+}
+
+func TestTryP(t *testing.T) {
+	tests := []struct {
+		name    string
+		errMsg  string
+		input   string
+		wantErr bool
+	}{
+		// Valid cases
+		{"Simple name", "", "userId", false},
+		{"With underscore", "", "user_id", false},
+		{"With numbers", "", "user123", false},
+		{"Mixed case", "", "UserID", false},
+
+		// Invalid cases
+		{"Empty string", "invalid parameter name", "", true},
+		{"Starts with number", "invalid parameter name", "123user", true},
+		{"SQL keyword", "invalid parameter name", "select", true},
+		{"Contains space", "invalid parameter name", "user id", true},
+		{"Contains SQL injection", "invalid parameter name", "user'; DROP TABLE--", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			param, err := TryP(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("TryP(%q) expected error, got nil", tt.input)
+				} else if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("TryP(%q) error = %v, want error containing %q", tt.input, err, tt.errMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("TryP(%q) unexpected error: %v", tt.input, err)
+				}
+				if param.Name != tt.input {
+					t.Errorf("TryP(%q) = %v, want %v", tt.input, param.Name, tt.input)
+				}
+			}
+		})
+	}
 }

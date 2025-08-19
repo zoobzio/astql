@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.22', '1.23', '1.24']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ matrix.go-version }}
+    
+    - name: Run tests with race detector
+      run: make test-race
+    
+    - name: Generate coverage
+      run: make coverage
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.out
+        flags: unittests
+        name: astql-coverage-${{ matrix.go-version }}
+        fail_ci_if_error: false
+      if: matrix.go-version == '1.23'
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+    
+    - name: golangci-lint
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: v1.64.8
+        args: --config=.golangci.yml --timeout=5m
+        skip-cache: false
+        skip-save-cache: false
+    
+    - name: Security Report
+      if: always()
+      run: |
+        golangci-lint run --config=.golangci.yml --out-format=json > lint-report.json || true
+        echo "### Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+        echo "Linters with findings:" >> $GITHUB_STEP_SUMMARY
+        jq -r '.Issues[] | .FromLinter' lint-report.json 2>/dev/null | sort | uniq -c | sort -nr >> $GITHUB_STEP_SUMMARY || echo "No issues found ✅" >> $GITHUB_STEP_SUMMARY
+
+  benchmark:
+    name: Benchmark
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+    
+    - name: Run benchmarks
+      run: |
+        echo "### ASTQL Benchmarks" | tee benchmark_results.txt
+        make bench | tee -a benchmark_results.txt
+    
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: benchmark_results.txt
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Run Gosec Security Scanner
+      uses: securego/gosec@master
+      with:
+        args: '-fmt sarif -out gosec-results.sarif ./...'
+    
+    - name: Upload SARIF file
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: gosec-results.sarif
+      if: always()
+
+  license-check:
+    name: License Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+    
+    - name: Check dependencies licenses
+      run: |
+        go install github.com/google/go-licenses@latest
+        go-licenses check ./...

@@ -1,15 +1,19 @@
 package astql
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/zoobzio/astql/internal/types"
+)
 
 // Builder provides a fluent API for constructing queries.
 type Builder struct {
-	ast *QueryAST
+	ast *types.QueryAST
 	err error
 }
 
 // GetAST returns the internal AST (for use by provider packages).
-func (b *Builder) GetAST() *QueryAST {
+func (b *Builder) GetAST() *types.QueryAST {
 	return b.ast
 }
 
@@ -24,74 +28,74 @@ func (b *Builder) SetError(err error) {
 }
 
 // Select creates a new SELECT query builder.
-func Select(table Table) *Builder {
+func Select(t types.Table) *Builder {
 	return &Builder{
-		ast: &QueryAST{
-			Operation: OpSelect,
-			Target:    table,
+		ast: &types.QueryAST{
+			Operation: types.OpSelect,
+			Target:    t,
 		},
 	}
 }
 
 // Insert creates a new INSERT query builder.
-func Insert(table Table) *Builder {
+func Insert(t types.Table) *Builder {
 	return &Builder{
-		ast: &QueryAST{
-			Operation: OpInsert,
-			Target:    table,
+		ast: &types.QueryAST{
+			Operation: types.OpInsert,
+			Target:    t,
 		},
 	}
 }
 
 // Update creates a new UPDATE query builder.
-func Update(table Table) *Builder {
+func Update(t types.Table) *Builder {
 	return &Builder{
-		ast: &QueryAST{
-			Operation: OpUpdate,
-			Target:    table,
-			Updates:   make(map[Field]Param),
+		ast: &types.QueryAST{
+			Operation: types.OpUpdate,
+			Target:    t,
+			Updates:   make(map[types.Field]types.Param),
 		},
 	}
 }
 
 // Delete creates a new DELETE query builder.
-func Delete(table Table) *Builder {
+func Delete(t types.Table) *Builder {
 	return &Builder{
-		ast: &QueryAST{
-			Operation: OpDelete,
-			Target:    table,
+		ast: &types.QueryAST{
+			Operation: types.OpDelete,
+			Target:    t,
 		},
 	}
 }
 
 // Count creates a new COUNT query builder.
-func Count(table Table) *Builder {
+func Count(t types.Table) *Builder {
 	return &Builder{
-		ast: &QueryAST{
-			Operation: OpCount,
-			Target:    table,
+		ast: &types.QueryAST{
+			Operation: types.OpCount,
+			Target:    t,
 		},
 	}
 }
 
 // Listen creates a new LISTEN query builder.
 // The channel name is derived from the table name.
-func Listen(table Table) *Builder {
+func Listen(t types.Table) *Builder {
 	return &Builder{
-		ast: &QueryAST{
-			Operation: OpListen,
-			Target:    table,
+		ast: &types.QueryAST{
+			Operation: types.OpListen,
+			Target:    t,
 		},
 	}
 }
 
 // Notify creates a new NOTIFY query builder.
 // The channel name is derived from the table name.
-func Notify(table Table, payload Param) *Builder {
+func Notify(t types.Table, payload types.Param) *Builder {
 	return &Builder{
-		ast: &QueryAST{
-			Operation:     OpNotify,
-			Target:        table,
+		ast: &types.QueryAST{
+			Operation:     types.OpNotify,
+			Target:        t,
 			NotifyPayload: &payload,
 		},
 	}
@@ -99,21 +103,21 @@ func Notify(table Table, payload Param) *Builder {
 
 // Unlisten creates a new UNLISTEN query builder.
 // The channel name is derived from the table name.
-func Unlisten(table Table) *Builder {
+func Unlisten(t types.Table) *Builder {
 	return &Builder{
-		ast: &QueryAST{
-			Operation: OpUnlisten,
-			Target:    table,
+		ast: &types.QueryAST{
+			Operation: types.OpUnlisten,
+			Target:    t,
 		},
 	}
 }
 
 // Fields sets the fields to select.
-func (b *Builder) Fields(fields ...Field) *Builder {
+func (b *Builder) Fields(fields ...types.Field) *Builder {
 	if b.err != nil {
 		return b
 	}
-	if b.ast.Operation != OpSelect {
+	if b.ast.Operation != types.OpSelect {
 		b.err = fmt.Errorf("Fields() can only be used with SELECT queries")
 		return b
 	}
@@ -122,7 +126,7 @@ func (b *Builder) Fields(fields ...Field) *Builder {
 }
 
 // Where sets or adds conditions.
-func (b *Builder) Where(condition ConditionItem) *Builder {
+func (b *Builder) Where(condition types.ConditionItem) *Builder {
 	if b.err != nil {
 		return b
 	}
@@ -138,49 +142,52 @@ func (b *Builder) Where(condition ConditionItem) *Builder {
 }
 
 // WhereField is a convenience method for simple field conditions.
-func (b *Builder) WhereField(field Field, op Operator, param Param) *Builder {
-	return b.Where(C(field, op, param))
+func (b *Builder) WhereField(f types.Field, op types.Operator, p types.Param) *Builder {
+	return b.Where(C(f, op, p))
 }
 
 // Set adds a field update for UPDATE queries.
-func (b *Builder) Set(field Field, param Param) *Builder {
+func (b *Builder) Set(f types.Field, p types.Param) *Builder {
 	if b.err != nil {
 		return b
 	}
-	if b.ast.Operation != OpUpdate {
+	if b.ast.Operation != types.OpUpdate {
 		b.err = fmt.Errorf("Set() can only be used with UPDATE queries")
 		return b
 	}
-	b.ast.Updates[field] = param
+	if b.ast.Updates == nil {
+		b.ast.Updates = make(map[types.Field]types.Param)
+	}
+	b.ast.Updates[f] = p
 	return b
 }
 
 // Values adds a value set for INSERT queries.
-func (b *Builder) Values(values map[Field]Param) *Builder {
+func (b *Builder) Values(values map[types.Field]types.Param) *Builder {
 	if b.err != nil {
 		return b
 	}
-	if b.ast.Operation != OpInsert {
+	if b.ast.Operation != types.OpInsert {
 		b.err = fmt.Errorf("Values() can only be used with INSERT queries")
 		return b
 	}
 	if b.ast.Values == nil {
-		b.ast.Values = []map[Field]Param{}
+		b.ast.Values = []map[types.Field]types.Param{}
 	}
 	b.ast.Values = append(b.ast.Values, values)
 	return b
 }
 
 // OrderBy adds ordering.
-func (b *Builder) OrderBy(field Field, direction Direction) *Builder {
+func (b *Builder) OrderBy(f types.Field, direction types.Direction) *Builder {
 	if b.err != nil {
 		return b
 	}
 	if b.ast.Ordering == nil {
-		b.ast.Ordering = []OrderBy{}
+		b.ast.Ordering = []types.OrderBy{}
 	}
-	b.ast.Ordering = append(b.ast.Ordering, OrderBy{
-		Field:     field,
+	b.ast.Ordering = append(b.ast.Ordering, types.OrderBy{
+		Field:     f,
 		Direction: direction,
 	})
 	return b
@@ -205,7 +212,7 @@ func (b *Builder) Offset(offset int) *Builder {
 }
 
 // Build returns the constructed AST or an error.
-func (b *Builder) Build() (*QueryAST, error) {
+func (b *Builder) Build() (*types.QueryAST, error) {
 	if b.err != nil {
 		return nil, b.err
 	}
@@ -219,61 +226,10 @@ func (b *Builder) Build() (*QueryAST, error) {
 }
 
 // MustBuild returns the AST or panics on error.
-func (b *Builder) MustBuild() *QueryAST {
+func (b *Builder) MustBuild() *types.QueryAST {
 	ast, err := b.Build()
 	if err != nil {
 		panic(err)
 	}
 	return ast
-}
-
-// Validate performs basic validation on the AST.
-func (ast *QueryAST) Validate() error {
-	if ast.Target.Name == "" {
-		return fmt.Errorf("target table is required")
-	}
-
-	switch ast.Operation {
-	case OpSelect:
-		// Fields are optional (defaults to *)
-	case OpInsert:
-		if len(ast.Values) == 0 {
-			return fmt.Errorf("INSERT requires at least one value set")
-		}
-		// Ensure all value sets have the same fields
-		if len(ast.Values) > 1 {
-			firstKeys := make(map[Field]bool)
-			for k := range ast.Values[0] {
-				firstKeys[k] = true
-			}
-			for i, valueSet := range ast.Values[1:] {
-				if len(valueSet) != len(firstKeys) {
-					return fmt.Errorf("value set %d has different number of fields", i+1)
-				}
-				for k := range valueSet {
-					if !firstKeys[k] {
-						return fmt.Errorf("value set %d has different fields", i+1)
-					}
-				}
-			}
-		}
-	case OpUpdate:
-		if len(ast.Updates) == 0 {
-			return fmt.Errorf("UPDATE requires at least one field to update")
-		}
-	case OpDelete:
-		// No additional validation needed
-	case OpCount:
-		// No additional validation needed - COUNT can have WHERE but no fields
-	case OpListen, OpUnlisten:
-		// No additional validation needed - just need table name
-	case OpNotify:
-		if ast.NotifyPayload == nil {
-			return fmt.Errorf("NOTIFY requires a payload parameter")
-		}
-	default:
-		return fmt.Errorf("unsupported operation: %s", ast.Operation)
-	}
-
-	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/zoobzio/astql"
+	"github.com/zoobzio/astql/internal/types"
 )
 
 // Builder provides a fluent API for building PostgreSQL queries.
@@ -13,7 +14,7 @@ type Builder struct {
 }
 
 // Select creates a new PostgreSQL SELECT query builder.
-func Select(table astql.Table) *Builder {
+func Select(table types.Table) *Builder {
 	builder := astql.Select(table)
 	pgAst := NewAST(builder.GetAST())
 	return &Builder{
@@ -23,7 +24,7 @@ func Select(table astql.Table) *Builder {
 }
 
 // Insert creates a new PostgreSQL INSERT query builder.
-func Insert(table astql.Table) *Builder {
+func Insert(table types.Table) *Builder {
 	builder := astql.Insert(table)
 	pgAst := NewAST(builder.GetAST())
 	return &Builder{
@@ -33,7 +34,7 @@ func Insert(table astql.Table) *Builder {
 }
 
 // Update creates a new PostgreSQL UPDATE query builder.
-func Update(table astql.Table) *Builder {
+func Update(table types.Table) *Builder {
 	builder := astql.Update(table)
 	pgAst := NewAST(builder.GetAST())
 	return &Builder{
@@ -43,7 +44,7 @@ func Update(table astql.Table) *Builder {
 }
 
 // Delete creates a new PostgreSQL DELETE query builder.
-func Delete(table astql.Table) *Builder {
+func Delete(table types.Table) *Builder {
 	builder := astql.Delete(table)
 	pgAst := NewAST(builder.GetAST())
 	return &Builder{
@@ -53,7 +54,7 @@ func Delete(table astql.Table) *Builder {
 }
 
 // Count creates a new PostgreSQL COUNT query builder.
-func Count(table astql.Table) *Builder {
+func Count(table types.Table) *Builder {
 	builder := astql.Count(table)
 	pgAst := NewAST(builder.GetAST())
 	return &Builder{
@@ -63,7 +64,7 @@ func Count(table astql.Table) *Builder {
 }
 
 // Listen creates a new PostgreSQL LISTEN query builder.
-func Listen(table astql.Table) *Builder {
+func Listen(table types.Table) *Builder {
 	builder := astql.Listen(table)
 	pgAst := NewAST(builder.GetAST())
 	return &Builder{
@@ -73,7 +74,7 @@ func Listen(table astql.Table) *Builder {
 }
 
 // Notify creates a new PostgreSQL NOTIFY query builder.
-func Notify(table astql.Table, payload astql.Param) *Builder {
+func Notify(table types.Table, payload types.Param) *Builder {
 	builder := astql.Notify(table, payload)
 	pgAst := NewAST(builder.GetAST())
 	return &Builder{
@@ -83,7 +84,7 @@ func Notify(table astql.Table, payload astql.Param) *Builder {
 }
 
 // Unlisten creates a new PostgreSQL UNLISTEN query builder.
-func Unlisten(table astql.Table) *Builder {
+func Unlisten(table types.Table) *Builder {
 	builder := astql.Unlisten(table)
 	pgAst := NewAST(builder.GetAST())
 	return &Builder{
@@ -97,7 +98,7 @@ func (b *Builder) Distinct() *Builder {
 	if b.GetError() != nil {
 		return b
 	}
-	if b.pgAst.Operation != astql.OpSelect {
+	if b.pgAst.Operation != types.OpSelect {
 		b.SetError(fmt.Errorf("DISTINCT can only be used with SELECT queries"))
 		return b
 	}
@@ -106,31 +107,31 @@ func (b *Builder) Distinct() *Builder {
 }
 
 // Join adds an INNER JOIN.
-func (b *Builder) Join(table astql.Table, on astql.ConditionItem) *Builder {
+func (b *Builder) Join(table types.Table, on types.ConditionItem) *Builder {
 	return b.addJoin(InnerJoin, table, on)
 }
 
 // InnerJoin adds an INNER JOIN.
-func (b *Builder) InnerJoin(table astql.Table, on astql.ConditionItem) *Builder {
+func (b *Builder) InnerJoin(table types.Table, on types.ConditionItem) *Builder {
 	return b.addJoin(InnerJoin, table, on)
 }
 
 // LeftJoin adds a LEFT JOIN.
-func (b *Builder) LeftJoin(table astql.Table, on astql.ConditionItem) *Builder {
+func (b *Builder) LeftJoin(table types.Table, on types.ConditionItem) *Builder {
 	return b.addJoin(LeftJoin, table, on)
 }
 
 // RightJoin adds a RIGHT JOIN.
-func (b *Builder) RightJoin(table astql.Table, on astql.ConditionItem) *Builder {
+func (b *Builder) RightJoin(table types.Table, on types.ConditionItem) *Builder {
 	return b.addJoin(RightJoin, table, on)
 }
 
 // addJoin is a helper to add joins.
-func (b *Builder) addJoin(joinType JoinType, table astql.Table, on astql.ConditionItem) *Builder {
+func (b *Builder) addJoin(joinType JoinType, table types.Table, on types.ConditionItem) *Builder {
 	if b.GetError() != nil {
 		return b
 	}
-	if b.pgAst.Operation != astql.OpSelect && b.pgAst.Operation != astql.OpCount {
+	if b.pgAst.Operation != types.OpSelect && b.pgAst.Operation != types.OpCount {
 		b.SetError(fmt.Errorf("JOIN can only be used with SELECT or COUNT queries"))
 		return b
 	}
@@ -146,11 +147,11 @@ func (b *Builder) addJoin(joinType JoinType, table astql.Table, on astql.Conditi
 }
 
 // GroupBy adds GROUP BY fields.
-func (b *Builder) GroupBy(fields ...astql.Field) *Builder {
+func (b *Builder) GroupBy(fields ...types.Field) *Builder {
 	if b.GetError() != nil {
 		return b
 	}
-	if b.pgAst.Operation != astql.OpSelect {
+	if b.pgAst.Operation != types.OpSelect {
 		b.SetError(fmt.Errorf("GROUP BY can only be used with SELECT queries"))
 		return b
 	}
@@ -159,11 +160,11 @@ func (b *Builder) GroupBy(fields ...astql.Field) *Builder {
 }
 
 // Having adds HAVING conditions.
-func (b *Builder) Having(conditions ...astql.Condition) *Builder {
+func (b *Builder) Having(conditions ...types.Condition) *Builder {
 	if b.GetError() != nil {
 		return b
 	}
-	if b.pgAst.Operation != astql.OpSelect {
+	if b.pgAst.Operation != types.OpSelect {
 		b.SetError(fmt.Errorf("HAVING can only be used with SELECT queries"))
 		return b
 	}
@@ -176,12 +177,12 @@ func (b *Builder) Having(conditions ...astql.Condition) *Builder {
 }
 
 // Returning adds RETURNING fields for INSERT/UPDATE/DELETE.
-func (b *Builder) Returning(fields ...astql.Field) *Builder {
+func (b *Builder) Returning(fields ...types.Field) *Builder {
 	if b.GetError() != nil {
 		return b
 	}
 	switch b.pgAst.Operation {
-	case astql.OpInsert, astql.OpUpdate, astql.OpDelete:
+	case types.OpInsert, types.OpUpdate, types.OpDelete:
 		b.pgAst.Returning = append(b.pgAst.Returning, fields...)
 	default:
 		b.SetError(fmt.Errorf("RETURNING can only be used with INSERT, UPDATE, or DELETE"))
@@ -190,11 +191,11 @@ func (b *Builder) Returning(fields ...astql.Field) *Builder {
 }
 
 // OnConflict adds ON CONFLICT clause for INSERT.
-func (b *Builder) OnConflict(columns ...astql.Field) *ConflictBuilder {
+func (b *Builder) OnConflict(columns ...types.Field) *ConflictBuilder {
 	if b.GetError() != nil {
 		return &ConflictBuilder{builder: b, err: b.GetError()}
 	}
-	if b.pgAst.Operation != astql.OpInsert {
+	if b.pgAst.Operation != types.OpInsert {
 		err := fmt.Errorf("ON CONFLICT can only be used with INSERT")
 		b.SetError(err)
 		return &ConflictBuilder{builder: b, err: err}
@@ -223,7 +224,7 @@ func (cb *ConflictBuilder) DoNothing() *Builder {
 }
 
 // DoUpdate sets the conflict action to DO UPDATE.
-func (cb *ConflictBuilder) DoUpdate(updates map[astql.Field]astql.Param) *Builder {
+func (cb *ConflictBuilder) DoUpdate(updates map[types.Field]types.Param) *Builder {
 	if cb.err != nil {
 		return cb.builder
 	}
@@ -237,7 +238,7 @@ func (b *Builder) SelectExpr(expr FieldExpression) *Builder {
 	if b.GetError() != nil {
 		return b
 	}
-	if b.pgAst.Operation != astql.OpSelect {
+	if b.pgAst.Operation != types.OpSelect {
 		b.SetError(fmt.Errorf("SelectExpr can only be used with SELECT queries"))
 		return b
 	}
@@ -250,7 +251,7 @@ func (b *Builder) SelectCoalesce(expr CoalesceExpression) *Builder {
 	if b.GetError() != nil {
 		return b
 	}
-	if b.pgAst.Operation != astql.OpSelect {
+	if b.pgAst.Operation != types.OpSelect {
 		b.SetError(fmt.Errorf("SelectCoalesce can only be used with SELECT queries"))
 		return b
 	}
@@ -269,7 +270,7 @@ func (b *Builder) SelectNullIf(expr NullIfExpression) *Builder {
 	if b.GetError() != nil {
 		return b
 	}
-	if b.pgAst.Operation != astql.OpSelect {
+	if b.pgAst.Operation != types.OpSelect {
 		b.SetError(fmt.Errorf("SelectNullIf can only be used with SELECT queries"))
 		return b
 	}
@@ -288,7 +289,7 @@ func (b *Builder) SelectCase(expr CaseExpression) *Builder {
 	if b.GetError() != nil {
 		return b
 	}
-	if b.pgAst.Operation != astql.OpSelect {
+	if b.pgAst.Operation != types.OpSelect {
 		b.SetError(fmt.Errorf("SelectCase can only be used with SELECT queries"))
 		return b
 	}
@@ -309,7 +310,7 @@ func (b *Builder) SelectMath(expr MathExpression) *Builder {
 	if b.GetError() != nil {
 		return b
 	}
-	if b.pgAst.Operation != astql.OpSelect {
+	if b.pgAst.Operation != types.OpSelect {
 		b.SetError(fmt.Errorf("SelectMath can only be used with SELECT queries"))
 		return b
 	}
@@ -352,37 +353,37 @@ func (b *Builder) MustBuild() *AST {
 // Override base builder methods to return PostgresBuilder
 
 // Fields overrides to return PostgresBuilder.
-func (b *Builder) Fields(fields ...astql.Field) *Builder {
+func (b *Builder) Fields(fields ...types.Field) *Builder {
 	b.Builder.Fields(fields...)
 	return b
 }
 
 // Where overrides to return PostgresBuilder.
-func (b *Builder) Where(condition astql.ConditionItem) *Builder {
+func (b *Builder) Where(condition types.ConditionItem) *Builder {
 	b.Builder.Where(condition)
 	return b
 }
 
 // WhereField overrides to return PostgresBuilder.
-func (b *Builder) WhereField(field astql.Field, op astql.Operator, param astql.Param) *Builder {
+func (b *Builder) WhereField(field types.Field, op types.Operator, param types.Param) *Builder {
 	b.Builder.WhereField(field, op, param)
 	return b
 }
 
 // Set overrides to return PostgresBuilder.
-func (b *Builder) Set(field astql.Field, param astql.Param) *Builder {
+func (b *Builder) Set(field types.Field, param types.Param) *Builder {
 	b.Builder.Set(field, param)
 	return b
 }
 
 // Values overrides to return PostgresBuilder.
-func (b *Builder) Values(values map[astql.Field]astql.Param) *Builder {
+func (b *Builder) Values(values map[types.Field]types.Param) *Builder {
 	b.Builder.Values(values)
 	return b
 }
 
 // OrderBy overrides to return PostgresBuilder.
-func (b *Builder) OrderBy(field astql.Field, dir astql.Direction) *Builder {
+func (b *Builder) OrderBy(field types.Field, dir types.Direction) *Builder {
 	b.Builder.OrderBy(field, dir)
 	return b
 }
@@ -402,7 +403,7 @@ func (b *Builder) Offset(offset int) *Builder {
 // Helper functions for creating field expressions
 
 // Sum creates a SUM aggregate expression.
-func Sum(field astql.Field) FieldExpression {
+func Sum(field types.Field) FieldExpression {
 	return FieldExpression{
 		Field:     field,
 		Aggregate: AggSum,
@@ -410,7 +411,7 @@ func Sum(field astql.Field) FieldExpression {
 }
 
 // Avg creates an AVG aggregate expression.
-func Avg(field astql.Field) FieldExpression {
+func Avg(field types.Field) FieldExpression {
 	return FieldExpression{
 		Field:     field,
 		Aggregate: AggAvg,
@@ -418,7 +419,7 @@ func Avg(field astql.Field) FieldExpression {
 }
 
 // Min creates a MIN aggregate expression.
-func Min(field astql.Field) FieldExpression {
+func Min(field types.Field) FieldExpression {
 	return FieldExpression{
 		Field:     field,
 		Aggregate: AggMin,
@@ -426,7 +427,7 @@ func Min(field astql.Field) FieldExpression {
 }
 
 // Max creates a MAX aggregate expression.
-func Max(field astql.Field) FieldExpression {
+func Max(field types.Field) FieldExpression {
 	return FieldExpression{
 		Field:     field,
 		Aggregate: AggMax,
@@ -434,7 +435,7 @@ func Max(field astql.Field) FieldExpression {
 }
 
 // CountField creates a COUNT aggregate expression for a specific field.
-func CountField(field astql.Field) FieldExpression {
+func CountField(field types.Field) FieldExpression {
 	return FieldExpression{
 		Field:     field,
 		Aggregate: AggCountField,
@@ -442,7 +443,7 @@ func CountField(field astql.Field) FieldExpression {
 }
 
 // CountDistinct creates a COUNT(DISTINCT) aggregate expression.
-func CountDistinct(field astql.Field) FieldExpression {
+func CountDistinct(field types.Field) FieldExpression {
 	return FieldExpression{
 		Field:     field,
 		Aggregate: AggCountDistinct,
@@ -451,10 +452,6 @@ func CountDistinct(field astql.Field) FieldExpression {
 
 // As adds an alias to a field expression.
 func (expr FieldExpression) As(alias string) FieldExpression {
-	// Validate alias against registered field aliases
-	if err := astql.ValidateFieldAlias(alias); err != nil {
-		panic(fmt.Errorf("invalid field alias: %w", err))
-	}
 	expr.Alias = alias
 	return expr
 }

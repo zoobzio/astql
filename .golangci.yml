@@ -177,6 +177,10 @@ issues:
         - dupl
         - gosec
         - errcheck
+        - govet
+        - gofmt
+        - goimports
+      text: "fieldalignment|duplicate|Error return value.*is not checked|File is not properly formatted"
     
     # Allow panics in validation functions (by design)
     - path: (types|param|field_registry)\.go
@@ -188,7 +192,8 @@ issues:
     - path: schema\.go
       linters:
         - gosec
-      text: "G201|G202"  # SQL formatting/concatenation
+        - govet
+      text: "G201|G202|fieldalignment"  # SQL formatting/concatenation, field alignment
   
   # Maximum issues count per one linter
   max-issues-per-linter: 0

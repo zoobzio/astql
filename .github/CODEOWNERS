@@ -1,0 +1,37 @@
+# CODEOWNERS for ASTQL
+# This file defines who is responsible for code reviews in different parts of the codebase.
+# These owners will be automatically requested for review when someone opens a pull request.
+
+# Global owners for all files
+* @zoobzio
+
+# Core AST and builder logic
+/ast.go @zoobzio
+/field.go @zoobzio
+/table.go @zoobzio
+/condition.go @zoobzio
+/operator.go @zoobzio
+/operation.go @zoobzio
+/provider.go @zoobzio
+/param.go @zoobzio
+/metadata.go @zoobzio
+
+# Internal types package (security-critical)
+/internal/ @zoobzio
+
+# Provider implementations
+/providers/postgres/ @zoobzio
+/providers/ @zoobzio
+
+# CI/CD and tooling
+/.github/ @zoobzio
+/Makefile @zoobzio
+/.golangci.yml @zoobzio
+
+# Documentation
+/*.md @zoobzio
+/LICENSE @zoobzio
+
+# Dependencies
+/go.mod @zoobzio
+/go.sum @zoobzio
