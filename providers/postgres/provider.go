@@ -66,12 +66,6 @@ func (p *Provider) Render(ast *AST) (*astql.QueryResult, error) {
 		if err := p.renderCount(ast, &sql, addParam); err != nil {
 			return nil, err
 		}
-	case types.OpListen:
-		p.renderListen(ast, &sql)
-	case types.OpNotify:
-		p.renderNotify(ast, &sql, addParam)
-	case types.OpUnlisten:
-		p.renderUnlisten(ast, &sql)
 	default:
 		return nil, fmt.Errorf("unsupported operation: %s", ast.Operation)
 	}
@@ -697,31 +691,4 @@ func (*Provider) renderOperator(op types.Operator) string {
 	default:
 		return string(op)
 	}
-}
-
-func (*Provider) renderListen(ast *AST, sql *strings.Builder) {
-	// Channel name is derived from table name (e.g., "users" -> "users_changes")
-	channelName := ast.Target.Name + "_changes"
-	sql.WriteString("LISTEN ")
-	sql.WriteString(channelName)
-}
-
-func (*Provider) renderNotify(ast *AST, sql *strings.Builder, addParam func(types.Param) string) {
-	// Channel name is derived from table name (e.g., "users" -> "users_changes")
-	channelName := ast.Target.Name + "_changes"
-	sql.WriteString("NOTIFY ")
-	sql.WriteString(channelName)
-
-	// Add payload if provided
-	if ast.NotifyPayload != nil {
-		sql.WriteString(", ")
-		sql.WriteString(addParam(*ast.NotifyPayload))
-	}
-}
-
-func (*Provider) renderUnlisten(ast *AST, sql *strings.Builder) {
-	// Channel name is derived from table name (e.g., "users" -> "users_changes")
-	channelName := ast.Target.Name + "_changes"
-	sql.WriteString("UNLISTEN ")
-	sql.WriteString(channelName)
 }

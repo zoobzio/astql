@@ -37,10 +37,9 @@ type QuerySchema struct {
 	Limit            *int                    `json:"limit,omitempty" yaml:"limit,omitempty"`
 	Offset           *int                    `json:"offset,omitempty" yaml:"offset,omitempty"`
 	// String fields
-	Operation     string `json:"operation" yaml:"operation"`
-	Table         string `json:"table" yaml:"table"`
-	Alias         string `json:"alias,omitempty" yaml:"alias,omitempty"`
-	NotifyPayload string `json:"notify_payload,omitempty" yaml:"notify_payload,omitempty"`
+	Operation string `json:"operation" yaml:"operation"`
+	Table     string `json:"table" yaml:"table"`
+	Alias     string `json:"alias,omitempty" yaml:"alias,omitempty"`
 	// Smaller fields last
 	Distinct bool `json:"distinct,omitempty" yaml:"distinct,omitempty"`
 }
@@ -159,19 +158,8 @@ func BuildFromSchema(schema *QuerySchema) (*AST, error) {
 		builder = Delete(table)
 	case "COUNT", "count":
 		builder = Count(table)
-	case "LISTEN", "listen":
-		builder = Listen(table)
-	case "NOTIFY", "notify":
-		if schema.NotifyPayload == "" {
-			return nil, fmt.Errorf("NOTIFY requires a payload parameter name")
-		}
-		payload, err := astql.TryP(schema.NotifyPayload)
-		if err != nil {
-			return nil, fmt.Errorf("invalid notify payload parameter: %w", err)
-		}
-		builder = Notify(table, payload)
-	case "UNLISTEN", "unlisten":
-		builder = Unlisten(table)
+	default:
+		return nil, fmt.Errorf("unsupported operation: %s", schema.Operation)
 	}
 
 	// Add fields and expressions for SELECT
@@ -215,18 +203,24 @@ func BuildFromSchema(schema *QuerySchema) (*AST, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid join table: %w", err)
 		}
-		on, err := buildConditionFromSchema(&join.On)
-		if err != nil {
-			return nil, fmt.Errorf("invalid join condition: %w", err)
-		}
 
-		switch join.Type {
-		case "inner", "INNER":
-			builder = builder.InnerJoin(joinTable, on)
-		case "left", "LEFT":
-			builder = builder.LeftJoin(joinTable, on)
-		case "right", "RIGHT":
-			builder = builder.RightJoin(joinTable, on)
+		// CROSS JOIN doesn't need an ON clause
+		if join.Type == "cross" || join.Type == "CROSS" {
+			builder = builder.CrossJoin(joinTable)
+		} else {
+			on, err := buildConditionFromSchema(&join.On)
+			if err != nil {
+				return nil, fmt.Errorf("invalid join condition: %w", err)
+			}
+
+			switch join.Type {
+			case "inner", "INNER":
+				builder = builder.InnerJoin(joinTable, on)
+			case "left", "LEFT":
+				builder = builder.LeftJoin(joinTable, on)
+			case "right", "RIGHT":
+				builder = builder.RightJoin(joinTable, on)
+			}
 		}
 	}
 
@@ -364,7 +358,7 @@ func BuildFromSchema(schema *QuerySchema) (*AST, error) {
 				if len(schema.OnConflict.Updates) == 0 {
 					return nil, fmt.Errorf("ON CONFLICT DO UPDATE requires updates")
 				}
-				updates := make(map[types.Field]types.Param)
+				updateBuilder := conflictBuilder.DoUpdate()
 				for fieldName, paramName := range schema.OnConflict.Updates {
 					field, err := astql.TryF(fieldName)
 					if err != nil {
@@ -374,9 +368,9 @@ func BuildFromSchema(schema *QuerySchema) (*AST, error) {
 					if err != nil {
 						return nil, fmt.Errorf("invalid conflict update parameter: %w", err)
 					}
-					updates[field] = param
+					updateBuilder = updateBuilder.Set(field, param)
 				}
-				builder = conflictBuilder.DoUpdate(updates)
+				builder = updateBuilder.Build()
 			}
 		}
 	}
@@ -770,9 +764,6 @@ var allowedOperations = map[string]bool{
 	"UPDATE": true, "update": true,
 	"DELETE": true, "delete": true,
 	"COUNT": true, "count": true,
-	"LISTEN": true, "listen": true,
-	"NOTIFY": true, "notify": true,
-	"UNLISTEN": true, "unlisten": true,
 }
 
 var allowedOperators = map[string]bool{
@@ -806,6 +797,7 @@ var allowedJoinTypes = map[string]bool{
 	"inner": true, "INNER": true,
 	"left": true, "LEFT": true,
 	"right": true, "RIGHT": true,
+	"cross": true, "CROSS": true,
 }
 
 var allowedConflictActions = map[string]bool{

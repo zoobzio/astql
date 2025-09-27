@@ -78,40 +78,6 @@ func Count(t types.Table) *Builder {
 	}
 }
 
-// Listen creates a new LISTEN query builder.
-// The channel name is derived from the table name.
-func Listen(t types.Table) *Builder {
-	return &Builder{
-		ast: &types.QueryAST{
-			Operation: types.OpListen,
-			Target:    t,
-		},
-	}
-}
-
-// Notify creates a new NOTIFY query builder.
-// The channel name is derived from the table name.
-func Notify(t types.Table, payload types.Param) *Builder {
-	return &Builder{
-		ast: &types.QueryAST{
-			Operation:     types.OpNotify,
-			Target:        t,
-			NotifyPayload: &payload,
-		},
-	}
-}
-
-// Unlisten creates a new UNLISTEN query builder.
-// The channel name is derived from the table name.
-func Unlisten(t types.Table) *Builder {
-	return &Builder{
-		ast: &types.QueryAST{
-			Operation: types.OpUnlisten,
-			Target:    t,
-		},
-	}
-}
-
 // Fields sets the fields to select.
 func (b *Builder) Fields(fields ...types.Field) *Builder {
 	if b.err != nil {

@@ -41,7 +41,7 @@ func TestSubqueryCondition(t *testing.T) {
 		field := types.Field{Name: "user_id"}
 		subquery := Subquery{AST: &types.QueryAST{
 			Operation: types.OpSelect,
-			Target:    types.Table{Name: "active_users"},
+			Target:    types.Table{Name: "ActiveUser"},
 			Fields:    []types.Field{{Name: "id"}},
 		}}
 
@@ -291,6 +291,64 @@ func TestMaxSubqueryDepthConstant(t *testing.T) {
 	if MaxSubqueryDepth != 3 {
 		t.Errorf("Expected MaxSubqueryDepth to be 3, got %d", MaxSubqueryDepth)
 	}
+}
+
+func TestSubFunctions(t *testing.T) {
+	SetupTest(t)
+
+	t.Run("Sub with valid builder", func(t *testing.T) {
+		table := astql.T("User")
+		builder := astql.Select(table).Fields(astql.F("id"))
+
+		subquery := Sub(builder)
+		if subquery.AST == nil {
+			t.Error("Expected Subquery to have AST")
+		}
+
+		// Verify the AST was built
+		ast, err := builder.Build()
+		if err != nil {
+			t.Errorf("Expected no error, got: %v", err)
+		}
+		if ast.Operation != types.OpSelect {
+			t.Errorf("Expected SELECT operation, got %s", ast.Operation)
+		}
+	})
+
+	t.Run("SubPostgres with valid builder", func(t *testing.T) {
+		table := astql.T("User")
+		pgBuilder := Select(table).Fields(astql.F("name"))
+
+		subquery := SubPostgres(pgBuilder)
+		if subquery.AST == nil {
+			t.Error("Expected Subquery to have PostgreSQL AST")
+		}
+
+		// Verify it's a PostgreSQL AST
+		if pgAST, ok := subquery.AST.(*AST); ok {
+			if pgAST.QueryAST == nil {
+				t.Error("Expected PostgreSQL AST to have QueryAST")
+			}
+		} else {
+			t.Error("Expected AST to be PostgreSQL AST")
+		}
+	})
+
+	t.Run("SubPostgres with builder error", func(t *testing.T) {
+		table := astql.T("User")
+		pgBuilder := Select(table)
+		// Force an error in the builder
+		pgBuilder.SetError(fmt.Errorf("test error"))
+
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("Expected panic for builder with error")
+			}
+		}()
+
+		SubPostgres(pgBuilder)
+	})
+
 }
 
 func TestSubqueryStructure(t *testing.T) {

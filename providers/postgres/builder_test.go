@@ -73,15 +73,15 @@ func TestInsertBuilder(t *testing.T) {
 	})
 
 	t.Run("INSERT with ON CONFLICT DO UPDATE", func(t *testing.T) {
-		builder := Insert(types.Table{Name: "users"}).
+		builder := Insert(types.Table{Name: "User"}).
 			Values(map[types.Field]types.Param{
 				{Name: "name"}:             {Name: "userName"},
 				types.Field{Name: "email"}: types.Param{Name: "userEmail"},
 			}).
 			OnConflict(types.Field{Name: "email"}).
-			DoUpdate(map[types.Field]types.Param{
-				types.Field{Name: "name"}: types.Param{Name: "newName"},
-			})
+			DoUpdate().
+			Set(types.Field{Name: "name"}, types.Param{Name: "newName"}).
+			Build()
 
 		ast, err := builder.Build()
 		if err != nil {
@@ -119,35 +119,6 @@ func TestCountBuilder(t *testing.T) {
 	if builder.pgAst.Operation != types.OpCount {
 		t.Errorf("Expected OpCount, got %s", builder.pgAst.Operation)
 	}
-}
-
-func TestListenNotifyBuilders(t *testing.T) {
-	t.Run("Listen", func(t *testing.T) {
-		builder := Listen(types.Table{Name: "events"})
-
-		if builder.pgAst.Operation != types.OpListen {
-			t.Errorf("Expected OpListen, got %s", builder.pgAst.Operation)
-		}
-	})
-
-	t.Run("Notify", func(t *testing.T) {
-		builder := Notify(types.Table{Name: "events"}, types.Param{Name: "message"})
-
-		if builder.pgAst.Operation != types.OpNotify {
-			t.Errorf("Expected OpNotify, got %s", builder.pgAst.Operation)
-		}
-		if builder.pgAst.NotifyPayload == nil {
-			t.Error("Expected NotifyPayload to be set")
-		}
-	})
-
-	t.Run("Unlisten", func(t *testing.T) {
-		builder := Unlisten(types.Table{Name: "events"})
-
-		if builder.pgAst.Operation != types.OpUnlisten {
-			t.Errorf("Expected OpUnlisten, got %s", builder.pgAst.Operation)
-		}
-	})
 }
 
 func TestJoinBuilders(t *testing.T) {
@@ -444,9 +415,10 @@ func TestBuildAndMustBuild(t *testing.T) {
 
 	t.Run("MustBuild panic on invalid AST", func(t *testing.T) {
 		// Create an invalid AST that will fail validation
-		builder := Insert(types.Table{Name: "users"}).
+		builder := Insert(types.Table{Name: "User"}).
 			OnConflict(types.Field{Name: "email"}).
-			DoUpdate(map[types.Field]types.Param{}) // Invalid - empty updates
+			DoUpdate().
+			Build()
 
 		// Remove the columns to make it invalid
 		builder.pgAst.OnConflict.Columns = []types.Field{}

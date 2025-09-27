@@ -53,8 +53,8 @@ func TestValidateParamName(t *testing.T) {
 
 func TestValidateAllowlists(t *testing.T) {
 	t.Run("Operations", func(t *testing.T) {
-		valid := []string{"SELECT", "select", "INSERT", "DELETE", "UPDATE", "COUNT", "LISTEN", "NOTIFY", "UNLISTEN"}
-		invalid := []string{"TRUNCATE", "DROP", "CREATE", "ALTER", ""}
+		valid := []string{"SELECT", "select", "INSERT", "DELETE", "UPDATE", "COUNT"}
+		invalid := []string{"TRUNCATE", "DROP", "CREATE", "ALTER", "", "LISTEN", "NOTIFY", "UNLISTEN"}
 
 		for _, op := range valid {
 			if err := ValidateOperation(op); err != nil {
@@ -92,7 +92,7 @@ func TestBuildFromSchemaBasicSelect(t *testing.T) {
 
 	schema := &QuerySchema{
 		Operation: "SELECT",
-		Table:     "users",
+		Table:     "User",
 		Fields:    []string{"id", "name", "email"},
 		Where: &ConditionSchema{
 			Field:    "id",
@@ -143,7 +143,7 @@ func TestBuildFromSchemaValidation(t *testing.T) {
 			name: "invalid operation",
 			schema: QuerySchema{
 				Operation: "TRUNCATE",
-				Table:     "users",
+				Table:     "User",
 			},
 			wantErr: "operation 'TRUNCATE' not allowed",
 		},
@@ -159,7 +159,7 @@ func TestBuildFromSchemaValidation(t *testing.T) {
 			name: "unregistered field",
 			schema: QuerySchema{
 				Operation: "SELECT",
-				Table:     "users",
+				Table:     "User",
 				Fields:    []string{"invalid_field"},
 			},
 			wantErr: "not found",
@@ -168,7 +168,7 @@ func TestBuildFromSchemaValidation(t *testing.T) {
 			name: "invalid param name",
 			schema: QuerySchema{
 				Operation: "SELECT",
-				Table:     "users",
+				Table:     "User",
 				Where: &ConditionSchema{
 					Field:    "id",
 					Operator: "=",
@@ -181,7 +181,7 @@ func TestBuildFromSchemaValidation(t *testing.T) {
 			name: "sql keyword param",
 			schema: QuerySchema{
 				Operation: "SELECT",
-				Table:     "users",
+				Table:     "User",
 				Where: &ConditionSchema{
 					Field:    "id",
 					Operator: "=",
@@ -209,7 +209,7 @@ func TestBuildFromSchemaComplexConditions(t *testing.T) {
 
 	schema := &QuerySchema{
 		Operation: "SELECT",
-		Table:     "users",
+		Table:     "User",
 		Where: &ConditionSchema{
 			Logic: "OR",
 			Conditions: []ConditionSchema{
@@ -255,11 +255,11 @@ func TestBuildFromSchemaJoins(t *testing.T) {
 
 	schema := &QuerySchema{
 		Operation: "SELECT",
-		Table:     "users",
+		Table:     "User",
 		Joins: []JoinSchema{
 			{
 				Type:  "INNER",
-				Table: "posts",
+				Table: "Post",
 				Alias: "p",
 				On: ConditionSchema{
 					LeftField:  "users.id",
@@ -290,13 +290,13 @@ func TestBuildFromSchemaSubquery(t *testing.T) {
 
 	schema := &QuerySchema{
 		Operation: "SELECT",
-		Table:     "users",
+		Table:     "User",
 		Where: &ConditionSchema{
 			Field:    "user_id",
 			Operator: "IN",
 			Subquery: &QuerySchema{
 				Operation: "SELECT",
-				Table:     "active_users",
+				Table:     "ActiveUser",
 				Fields:    []string{"id"},
 			},
 		},
@@ -317,7 +317,7 @@ func TestBuildFromSchemaInsertWithConflict(t *testing.T) {
 
 	schema := &QuerySchema{
 		Operation: "INSERT",
-		Table:     "users",
+		Table:     "User",
 		Values: []map[string]string{
 			{
 				"name":  "userName",
@@ -359,7 +359,7 @@ func TestBuildFromSchemaInsertWithConflict(t *testing.T) {
 func TestSchemaYAMLParsing(t *testing.T) {
 	yamlContent := `
 operation: SELECT
-table: users
+table: User
 fields: 
   - id
   - name
@@ -400,7 +400,7 @@ limit: 10
 func TestSchemaJSONParsing(t *testing.T) {
 	jsonContent := `{
 		"operation": "INSERT",
-		"table": "users",
+		"table": "User",
 		"values": [
 			{
 				"name": "userName",
@@ -440,7 +440,7 @@ func TestBuildFromSchemaAggregates(t *testing.T) {
 
 	schema := &QuerySchema{
 		Operation: "SELECT",
-		Table:     "orders",
+		Table:     "Order",
 		FieldExpressions: []FieldExpressionSchema{
 			{
 				Field: "customer_id",
@@ -490,7 +490,7 @@ func TestBuildFromSchemaCaseExpression(t *testing.T) {
 
 	schema := &QuerySchema{
 		Operation: "SELECT",
-		Table:     "users",
+		Table:     "User",
 		FieldExpressions: []FieldExpressionSchema{
 			{
 				Case: &CaseSchema{
@@ -541,7 +541,7 @@ func TestSchemaSecurityValidation(t *testing.T) {
 			name: "SQL injection in param name",
 			schema: QuerySchema{
 				Operation: "SELECT",
-				Table:     "users",
+				Table:     "User",
 				Where: &ConditionSchema{
 					Field:    "id",
 					Operator: "=",
@@ -562,7 +562,7 @@ func TestSchemaSecurityValidation(t *testing.T) {
 			name: "invalid operator",
 			schema: QuerySchema{
 				Operation: "SELECT",
-				Table:     "users",
+				Table:     "User",
 				Where: &ConditionSchema{
 					Field:    "id",
 					Operator: "~", // PostgreSQL regex operator, not allowed
@@ -585,7 +585,242 @@ func TestSchemaSecurityValidation(t *testing.T) {
 	}
 }
 
-// Helper function.
+func TestBuildFromSchemaMathExpressions(t *testing.T) {
+	SetupTest(t)
+
+	tests := []struct {
+		name        string
+		schema      QuerySchema
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "Math expression - ROUND",
+			schema: QuerySchema{
+				Operation: "SELECT",
+				Table:     "User",
+				FieldExpressions: []FieldExpressionSchema{
+					{
+						Field: "age",
+						Math: &MathSchema{
+							Function: "ROUND",
+							Field:    "age",
+							Arg:      strPtr("precision"),
+						},
+						Alias: "rounded_age",
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Math expression - ROUND missing precision",
+			schema: QuerySchema{
+				Operation: "SELECT",
+				Table:     "User",
+				FieldExpressions: []FieldExpressionSchema{
+					{
+						Field: "age",
+						Math: &MathSchema{
+							Function: "ROUND",
+							Field:    "age",
+						},
+					},
+				},
+			},
+			wantErr:     true,
+			errContains: "ROUND requires precision argument",
+		},
+		{
+			name: "Math expression - FLOOR",
+			schema: QuerySchema{
+				Operation: "SELECT",
+				Table:     "User",
+				FieldExpressions: []FieldExpressionSchema{
+					{
+						Field: "age",
+						Math: &MathSchema{
+							Function: "FLOOR",
+							Field:    "age",
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Math expression - POWER",
+			schema: QuerySchema{
+				Operation: "SELECT",
+				Table:     "User",
+				FieldExpressions: []FieldExpressionSchema{
+					{
+						Field: "age",
+						Math: &MathSchema{
+							Function: "POWER",
+							Field:    "age",
+							Arg:      strPtr("exponent"),
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Math expression - POWER missing exponent",
+			schema: QuerySchema{
+				Operation: "SELECT",
+				Table:     "User",
+				FieldExpressions: []FieldExpressionSchema{
+					{
+						Field: "age",
+						Math: &MathSchema{
+							Function: "POWER",
+							Field:    "age",
+						},
+					},
+				},
+			},
+			wantErr:     true,
+			errContains: "POWER requires exponent argument",
+		},
+		{
+			name: "Math expression - invalid function",
+			schema: QuerySchema{
+				Operation: "SELECT",
+				Table:     "User",
+				FieldExpressions: []FieldExpressionSchema{
+					{
+						Field: "age",
+						Math: &MathSchema{
+							Function: "INVALID",
+							Field:    "age",
+						},
+					},
+				},
+			},
+			wantErr:     true,
+			errContains: "math function 'INVALID' not allowed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := BuildFromSchema(&tt.schema)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("BuildFromSchema() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil && tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+				t.Errorf("Expected error containing %q, got %q", tt.errContains, err.Error())
+			}
+		})
+	}
+}
+
+func TestValidateFunctions(t *testing.T) {
+	t.Run("ValidateMathFunction", func(t *testing.T) {
+		valid := []string{"round", "ROUND", "floor", "FLOOR", "ceil", "CEIL", "abs", "ABS", "power", "POWER", "sqrt", "SQRT"}
+		invalid := []string{"median", "MEDIAN", "random", "", "DROP TABLE"}
+
+		for _, fn := range valid {
+			if err := ValidateMathFunction(fn); err != nil {
+				t.Errorf("Expected %q to be valid math function: %v", fn, err)
+			}
+		}
+
+		for _, fn := range invalid {
+			if err := ValidateMathFunction(fn); err == nil {
+				t.Errorf("Expected %q to be invalid math function", fn)
+			}
+		}
+	})
+
+	t.Run("ValidateDirection full coverage", func(t *testing.T) {
+		// Test empty direction (should be valid as default)
+		if err := ValidateDirection(""); err != nil {
+			t.Error("Empty direction should be valid (default)")
+		}
+
+		// Test invalid direction
+		if err := ValidateDirection("INVALID"); err == nil {
+			t.Error("Expected error for invalid direction")
+		}
+	})
+
+	t.Run("ValidateLogicOperator full coverage", func(t *testing.T) {
+		valid := []string{"AND", "and", "OR", "or"}
+		invalid := []string{"XOR", "NOT", ""}
+
+		for _, op := range valid {
+			if err := ValidateLogicOperator(op); err != nil {
+				t.Errorf("Expected %q to be valid logic operator: %v", op, err)
+			}
+		}
+
+		for _, op := range invalid {
+			if err := ValidateLogicOperator(op); err == nil {
+				t.Errorf("Expected %q to be invalid logic operator", op)
+			}
+		}
+	})
+
+	t.Run("ValidateJoinType full coverage", func(t *testing.T) {
+		valid := []string{"inner", "INNER", "left", "LEFT", "right", "RIGHT", "cross", "CROSS"}
+		invalid := []string{"full", "FULL", "natural", ""}
+
+		for _, jt := range valid {
+			if err := ValidateJoinType(jt); err != nil {
+				t.Errorf("Expected %q to be valid join type: %v", jt, err)
+			}
+		}
+
+		for _, jt := range invalid {
+			if err := ValidateJoinType(jt); err == nil {
+				t.Errorf("Expected %q to be invalid join type", jt)
+			}
+		}
+	})
+
+	t.Run("ValidateConflictAction full coverage", func(t *testing.T) {
+		valid := []string{"nothing", "NOTHING", "update", "UPDATE"}
+		invalid := []string{"replace", "ignore", ""}
+
+		for _, action := range valid {
+			if err := ValidateConflictAction(action); err != nil {
+				t.Errorf("Expected %q to be valid conflict action: %v", action, err)
+			}
+		}
+
+		for _, action := range invalid {
+			if err := ValidateConflictAction(action); err == nil {
+				t.Errorf("Expected %q to be invalid conflict action", action)
+			}
+		}
+	})
+
+	t.Run("ValidateAggregate full coverage", func(t *testing.T) {
+		valid := []string{"sum", "SUM", "avg", "AVG", "min", "MIN", "max", "MAX", "count", "COUNT", "count_distinct", "COUNT_DISTINCT"}
+		invalid := []string{"median", "mode", ""}
+
+		for _, agg := range valid {
+			if err := ValidateAggregate(agg); err != nil {
+				t.Errorf("Expected %q to be valid aggregate: %v", agg, err)
+			}
+		}
+
+		for _, agg := range invalid {
+			if err := ValidateAggregate(agg); err == nil {
+				t.Errorf("Expected %q to be invalid aggregate", agg)
+			}
+		}
+	})
+}
+
+// Helper functions.
 func intPtr(i int) *int {
 	return &i
+}
+
+func strPtr(s string) *string {
+	return &s
 }

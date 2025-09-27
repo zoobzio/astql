@@ -1,7 +1,6 @@
 package astql
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -46,9 +45,6 @@ func TestField(t *testing.T) {
 func TestFInvalidCases(t *testing.T) {
 	// Register test structs
 	SetupTest(t)
-	for _, field := range []string{"id", "name"} {
-		validFields.Store(field, true)
-	}
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -155,9 +151,8 @@ func TestValidateField(t *testing.T) {
 	}
 
 	// The SetupTest above should have initialized sentinel
-	// so we can safely inspect additional structs
-	ctx := context.Background()
-	sentinel.Inspect[TestStruct](ctx)
+	// Just inspect the struct - no registration needed
+	sentinel.Inspect[TestStruct]()
 
 	tests := []struct {
 		name    string
@@ -195,8 +190,8 @@ func TestValidateTable(t *testing.T) {
 		table   string
 		wantErr bool
 	}{
-		{"Valid table", "users", false},
-		{"Another valid table", "orders", false},
+		{"Valid table", "User", false},
+		{"Another valid table", "Order", false},
 		{"Unknown table", "unknown", true},
 		{"Empty table", "", true},
 	}

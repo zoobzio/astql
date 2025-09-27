@@ -12,15 +12,15 @@ func TestBuilderCreation(t *testing.T) {
 	// Register test structs
 	SetupTest(t)
 
-	table := T("users")
+	table := T("User")
 
 	t.Run("Select builder", func(t *testing.T) {
 		b := Select(table)
 		if b.ast.Operation != types.OpSelect {
 			t.Errorf("Expected OpSelect, got %s", b.ast.Operation)
 		}
-		if b.ast.Target.Name != "users" {
-			t.Errorf("Expected target 'users', got '%s'", b.ast.Target.Name)
+		if b.ast.Target.Name != "User" {
+			t.Errorf("Expected target 'User', got '%s'", b.ast.Target.Name)
 		}
 	})
 
@@ -29,8 +29,8 @@ func TestBuilderCreation(t *testing.T) {
 		if b.ast.Operation != types.OpInsert {
 			t.Errorf("Expected OpInsert, got %s", b.ast.Operation)
 		}
-		if b.ast.Target.Name != "users" {
-			t.Errorf("Expected target 'users', got '%s'", b.ast.Target.Name)
+		if b.ast.Target.Name != "User" {
+			t.Errorf("Expected target 'User', got '%s'", b.ast.Target.Name)
 		}
 	})
 
@@ -58,37 +58,13 @@ func TestBuilderCreation(t *testing.T) {
 		}
 	})
 
-	t.Run("Listen builder", func(t *testing.T) {
-		b := Listen(table)
-		if b.ast.Operation != types.OpListen {
-			t.Errorf("Expected OpListen, got %s", b.ast.Operation)
-		}
-	})
-
-	t.Run("Notify builder", func(t *testing.T) {
-		payload := P("payload")
-		b := Notify(table, payload)
-		if b.ast.Operation != types.OpNotify {
-			t.Errorf("Expected OpNotify, got %s", b.ast.Operation)
-		}
-		if b.ast.NotifyPayload == nil {
-			t.Error("Expected NotifyPayload to be set")
-		}
-	})
-
-	t.Run("Unlisten builder", func(t *testing.T) {
-		b := Unlisten(table)
-		if b.ast.Operation != types.OpUnlisten {
-			t.Errorf("Expected OpUnlisten, got %s", b.ast.Operation)
-		}
-	})
 }
 
 func TestBuilderFields(t *testing.T) {
 	// Register test structs
 	SetupTest(t)
 
-	table := T("users")
+	table := T("User")
 	field1 := F("id")
 	field2 := F("name")
 
@@ -117,7 +93,7 @@ func TestBuilderWhere(t *testing.T) {
 	// Register test structs
 	SetupTest(t)
 
-	table := T("users")
+	table := T("User")
 	field := F("id")
 	param := P("user_id")
 
@@ -170,7 +146,7 @@ func TestBuilderSet(t *testing.T) {
 	// Register test structs
 	SetupTest(t)
 
-	table := T("users")
+	table := T("User")
 	field := F("name")
 	param := P("new_name")
 
@@ -215,7 +191,7 @@ func TestBuilderValues(t *testing.T) {
 	// Register test structs
 	SetupTest(t)
 
-	table := T("users")
+	table := T("User")
 	field1 := F("name")
 	field2 := F("email")
 	param1 := P("name")
@@ -267,7 +243,7 @@ func TestBuilderOrderBy(t *testing.T) {
 	// Register test structs
 	SetupTest(t)
 
-	table := T("users")
+	table := T("User")
 	field1 := F("created_at")
 	field2 := F("name")
 
@@ -302,7 +278,7 @@ func TestBuilderLimitOffset(t *testing.T) {
 	// Register test structs
 	SetupTest(t)
 
-	table := T("users")
+	table := T("User")
 
 	t.Run("Limit", func(t *testing.T) {
 		b := Select(table).Limit(10)
@@ -342,7 +318,7 @@ func TestBuilderBuild(t *testing.T) {
 	// Register test structs
 	SetupTest(t)
 
-	table := T("users")
+	table := T("User")
 	field := F("name")
 	param := P("new_name")
 
@@ -389,7 +365,7 @@ func TestBuilderMustBuild(t *testing.T) {
 	// Register test structs
 	SetupTest(t)
 
-	table := T("users")
+	table := T("User")
 	field := F("name")
 	param := P("new_name")
 
@@ -475,20 +451,6 @@ func TestQueryASTValidate(t *testing.T) {
 		}
 	})
 
-	t.Run("NOTIFY without payload", func(t *testing.T) {
-		ast := &types.QueryAST{
-			Operation: types.OpNotify,
-			Target:    types.Table{Name: "users"},
-		}
-		err := ast.Validate()
-		if err == nil {
-			t.Error("Expected validation error")
-		}
-		if !strings.Contains(err.Error(), "NOTIFY requires a payload parameter") {
-			t.Errorf("Expected 'NOTIFY requires a payload parameter' error, got '%s'", err.Error())
-		}
-	})
-
 	t.Run("Unsupported operation", func(t *testing.T) {
 		ast := &types.QueryAST{
 			Operation: types.Operation("UNKNOWN"),
@@ -527,7 +489,7 @@ func TestBuilderGettersSetters(t *testing.T) {
 	// Register test structs
 	SetupTest(t)
 
-	table := T("users")
+	table := T("User")
 	b := Select(table)
 
 	t.Run("GetAST", func(t *testing.T) {
@@ -565,7 +527,7 @@ func TestBuilderChainAfterError(t *testing.T) {
 	// Register test structs
 	SetupTest(t)
 
-	table := T("users")
+	table := T("User")
 	field := F("id")
 	param := P("user_id")
 

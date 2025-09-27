@@ -95,9 +95,6 @@ func TestQueryAST(t *testing.T) {
 		if ast.Values != nil {
 			t.Error("Expected nil Values slice")
 		}
-		if ast.NotifyPayload != nil {
-			t.Error("Expected nil NotifyPayload")
-		}
 	})
 
 	t.Run("QueryAST with values", func(t *testing.T) {
@@ -111,7 +108,7 @@ func TestQueryAST(t *testing.T) {
 
 		ast := &types.QueryAST{
 			Operation: types.OpSelect,
-			Target:    T("users"), // Use a registered table
+			Target:    T("User"), // Use a registered table
 			Fields:    []types.Field{field},
 			Limit:     &limit,
 			Offset:    &offset,
@@ -121,8 +118,8 @@ func TestQueryAST(t *testing.T) {
 		if ast.Operation != types.OpSelect {
 			t.Errorf("Expected OpSelect, got %s", ast.Operation)
 		}
-		if ast.Target.Name != "users" {
-			t.Errorf("Expected target 'users', got '%s'", ast.Target.Name)
+		if ast.Target.Name != "User" {
+			t.Errorf("Expected target 'User', got '%s'", ast.Target.Name)
 		}
 		if len(ast.Fields) != 1 {
 			t.Errorf("Expected 1 field, got %d", len(ast.Fields))

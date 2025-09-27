@@ -22,7 +22,7 @@ func TestRenderBasicSelect(t *testing.T) {
 	ast := &AST{
 		QueryAST: &types.QueryAST{
 			Operation: types.OpSelect,
-			Target:    types.Table{Name: "users"},
+			Target:    types.Table{Name: "User"},
 			Fields: []types.Field{
 				{Name: "id"},
 				types.Field{Name: "name"},
@@ -36,7 +36,7 @@ func TestRenderBasicSelect(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	expectedSQL := `SELECT "id", "name", "email" FROM "users"`
+	expectedSQL := `SELECT "id", "name", "email" FROM "User"`
 	if result.SQL != expectedSQL {
 		t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, result.SQL)
 	}
@@ -53,7 +53,7 @@ func TestRenderSelectAll(t *testing.T) {
 	ast := &AST{
 		QueryAST: &types.QueryAST{
 			Operation: types.OpSelect,
-			Target:    types.Table{Name: "users"},
+			Target:    types.Table{Name: "User"},
 		},
 	}
 
@@ -62,7 +62,7 @@ func TestRenderSelectAll(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	expectedSQL := `SELECT * FROM "users"`
+	expectedSQL := `SELECT * FROM "User"`
 	if result.SQL != expectedSQL {
 		t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, result.SQL)
 	}
@@ -74,7 +74,7 @@ func TestRenderSelectWithWhere(t *testing.T) {
 	ast := &AST{
 		QueryAST: &types.QueryAST{
 			Operation: types.OpSelect,
-			Target:    types.Table{Name: "users"},
+			Target:    types.Table{Name: "User"},
 			Fields: []types.Field{
 				{Name: "id"},
 				types.Field{Name: "name"},
@@ -92,7 +92,7 @@ func TestRenderSelectWithWhere(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	expectedSQL := `SELECT "id", "name" FROM "users" WHERE "age" > :minAge`
+	expectedSQL := `SELECT "id", "name" FROM "User" WHERE "age" > :minAge`
 	if result.SQL != expectedSQL {
 		t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, result.SQL)
 	}
@@ -108,7 +108,7 @@ func TestRenderSelectWithMultipleConditions(t *testing.T) {
 	ast := &AST{
 		QueryAST: &types.QueryAST{
 			Operation: types.OpSelect,
-			Target:    types.Table{Name: "users"},
+			Target:    types.Table{Name: "User"},
 			WhereClause: astql.And(
 				astql.C(types.Field{Name: "age"}, types.GE, types.Param{Name: "minAge"}),
 				astql.C(types.Field{Name: "age"}, types.LE, types.Param{Name: "maxAge"}),
@@ -122,7 +122,7 @@ func TestRenderSelectWithMultipleConditions(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	expectedSQL := `SELECT * FROM "users" WHERE ("age" >= :minAge AND "age" <= :maxAge AND "status" = :status)`
+	expectedSQL := `SELECT * FROM "User" WHERE ("age" >= :minAge AND "age" <= :maxAge AND "status" = :status)`
 	if result.SQL != expectedSQL {
 		t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, result.SQL)
 	}
@@ -168,7 +168,7 @@ func TestFieldWithTablePrefix(t *testing.T) {
 	ast := &AST{
 		QueryAST: &types.QueryAST{
 			Operation: types.OpSelect,
-			Target:    types.Table{Name: "users", Alias: "u"},
+			Target:    types.Table{Name: "User", Alias: "u"},
 			Fields: []types.Field{
 				types.Field{Name: "id"}.WithTable("u"),
 				types.Field{Name: "name"}.WithTable("u"),
@@ -181,7 +181,7 @@ func TestFieldWithTablePrefix(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	expectedSQL := `SELECT u."id", u."name" FROM "users" u`
+	expectedSQL := `SELECT u."id", u."name" FROM "User" u`
 	if result.SQL != expectedSQL {
 		t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, result.SQL)
 	}
@@ -225,7 +225,7 @@ func TestInsertBasic(t *testing.T) {
 	ast := &AST{
 		QueryAST: &types.QueryAST{
 			Operation: types.OpInsert,
-			Target:    types.Table{Name: "users"},
+			Target:    types.Table{Name: "User"},
 			Values: []map[types.Field]types.Param{
 				{
 					types.Field{Name: "name"}:  types.Param{Name: "userName"},
@@ -250,7 +250,7 @@ func TestInsertBasic(t *testing.T) {
 	}
 
 	// Check it contains the basic structure
-	if !strings.Contains(result.SQL, `INSERT INTO "users"`) {
+	if !strings.Contains(result.SQL, `INSERT INTO "User"`) {
 		t.Error("SQL should start with INSERT INTO users")
 	}
 	if !strings.Contains(result.SQL, "VALUES") {
@@ -265,7 +265,7 @@ func TestNullOperations(t *testing.T) {
 	ast := &AST{
 		QueryAST: &types.QueryAST{
 			Operation: types.OpSelect,
-			Target:    types.Table{Name: "users"},
+			Target:    types.Table{Name: "User"},
 			WhereClause: astql.And(
 				astql.Null(types.Field{Name: "deleted_at"}),
 				astql.NotNull(types.Field{Name: "email"}),
@@ -278,7 +278,7 @@ func TestNullOperations(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	expectedSQL := `SELECT * FROM "users" WHERE ("deleted_at" IS NULL AND "email" IS NOT NULL)`
+	expectedSQL := `SELECT * FROM "User" WHERE ("deleted_at" IS NULL AND "email" IS NOT NULL)`
 	if result.SQL != expectedSQL {
 		t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, result.SQL)
 	}
@@ -295,7 +295,7 @@ func TestUpdateBasic(t *testing.T) {
 	ast := &AST{
 		QueryAST: &types.QueryAST{
 			Operation: types.OpUpdate,
-			Target:    types.Table{Name: "users"},
+			Target:    types.Table{Name: "User"},
 			Updates: map[types.Field]types.Param{
 				types.Field{Name: "name"}:       types.Param{Name: "newName"},
 				types.Field{Name: "updated_at"}: types.Param{Name: "now"},
@@ -312,7 +312,7 @@ func TestUpdateBasic(t *testing.T) {
 	t.Logf("Generated SQL: %s", result.SQL)
 
 	// Should contain basic UPDATE structure
-	if !strings.Contains(result.SQL, `UPDATE "users" SET`) {
+	if !strings.Contains(result.SQL, `UPDATE "User" SET`) {
 		t.Error("SQL should contain UPDATE users SET")
 	}
 	if !strings.Contains(result.SQL, `WHERE "id" = :userId`) {
@@ -362,7 +362,7 @@ func TestJoins(t *testing.T) {
 	ast := &AST{
 		QueryAST: &types.QueryAST{
 			Operation: types.OpSelect,
-			Target:    types.Table{Name: "users", Alias: "u"},
+			Target:    types.Table{Name: "User", Alias: "u"},
 			Fields: []types.Field{
 				types.Field{Name: "id"}.WithTable("u"),
 				types.Field{Name: "name"}.WithTable("u"),
@@ -372,7 +372,7 @@ func TestJoins(t *testing.T) {
 		Joins: []Join{
 			{
 				Type:  InnerJoin,
-				Table: types.Table{Name: "posts", Alias: "p"},
+				Table: types.Table{Name: "Post", Alias: "p"},
 				On: astql.C(
 					types.Field{Name: "user_id"}.WithTable("p"),
 					types.EQ,
@@ -387,7 +387,7 @@ func TestJoins(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	expectedSQL := `SELECT u."id", u."name", p."title" FROM "users" u INNER JOIN "posts" p ON p."user_id" = :userId`
+	expectedSQL := `SELECT u."id", u."name", p."title" FROM "User" u INNER JOIN "Post" p ON p."user_id" = :userId`
 	if result.SQL != expectedSQL {
 		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expectedSQL, result.SQL)
 	}
@@ -399,7 +399,7 @@ func TestDeleteBasic(t *testing.T) {
 	ast := &AST{
 		QueryAST: &types.QueryAST{
 			Operation:   types.OpDelete,
-			Target:      types.Table{Name: "users"},
+			Target:      types.Table{Name: "User"},
 			WhereClause: astql.C(types.Field{Name: "id"}, types.EQ, types.Param{Name: "userId"}),
 		},
 	}
@@ -409,7 +409,7 @@ func TestDeleteBasic(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	expectedSQL := `DELETE FROM "users" WHERE "id" = :userId`
+	expectedSQL := `DELETE FROM "User" WHERE "id" = :userId`
 	if result.SQL != expectedSQL {
 		t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, result.SQL)
 	}
@@ -421,7 +421,7 @@ func TestCount(t *testing.T) {
 	ast := &AST{
 		QueryAST: &types.QueryAST{
 			Operation:   types.OpCount,
-			Target:      types.Table{Name: "users"},
+			Target:      types.Table{Name: "User"},
 			WhereClause: astql.C(types.Field{Name: "active"}, types.EQ, types.Param{Name: "isActive"}),
 		},
 	}
@@ -431,7 +431,7 @@ func TestCount(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	expectedSQL := `SELECT COUNT(*) FROM "users" WHERE "active" = :isActive`
+	expectedSQL := `SELECT COUNT(*) FROM "User" WHERE "active" = :isActive`
 	if result.SQL != expectedSQL {
 		t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, result.SQL)
 	}
@@ -459,7 +459,7 @@ func TestInvalidAST(t *testing.T) {
 		ast := &AST{
 			QueryAST: &types.QueryAST{
 				Operation: "INVALID_OP",
-				Target:    types.Table{Name: "users"},
+				Target:    types.Table{Name: "User"},
 			},
 		}
 
@@ -481,7 +481,7 @@ func TestPostgreSQLSpecificFeatures(t *testing.T) {
 		ast := &AST{
 			QueryAST: &types.QueryAST{
 				Operation: types.OpInsert,
-				Target:    types.Table{Name: "users"},
+				Target:    types.Table{Name: "User"},
 				Values: []map[types.Field]types.Param{
 					{
 						types.Field{Name: "name"}: types.Param{Name: "userName"},
@@ -508,7 +508,7 @@ func TestPostgreSQLSpecificFeatures(t *testing.T) {
 		ast := &AST{
 			QueryAST: &types.QueryAST{
 				Operation: types.OpSelect,
-				Target:    types.Table{Name: "users"},
+				Target:    types.Table{Name: "User"},
 				Fields: []types.Field{
 					types.Field{Name: "email"},
 				},
@@ -521,7 +521,7 @@ func TestPostgreSQLSpecificFeatures(t *testing.T) {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
-		expectedSQL := `SELECT DISTINCT "email" FROM "users"`
+		expectedSQL := `SELECT DISTINCT "email" FROM "User"`
 		if result.SQL != expectedSQL {
 			t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, result.SQL)
 		}
@@ -535,7 +535,7 @@ func TestOrderByLimitOffset(t *testing.T) {
 	ast := &AST{
 		QueryAST: &types.QueryAST{
 			Operation: types.OpSelect,
-			Target:    types.Table{Name: "users"},
+			Target:    types.Table{Name: "User"},
 			Ordering: []types.OrderBy{
 				{Field: types.Field{Name: "created_at"}, Direction: types.DESC},
 				{Field: types.Field{Name: "name"}, Direction: types.ASC},
@@ -550,7 +550,7 @@ func TestOrderByLimitOffset(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	expectedSQL := `SELECT * FROM "users" ORDER BY "created_at" DESC, "name" ASC LIMIT 10 OFFSET 20`
+	expectedSQL := `SELECT * FROM "User" ORDER BY "created_at" DESC, "name" ASC LIMIT 10 OFFSET 20`
 	if result.SQL != expectedSQL {
 		t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, result.SQL)
 	}
@@ -567,7 +567,7 @@ func TestCaseExpressions(t *testing.T) {
 	ast := &AST{
 		QueryAST: &types.QueryAST{
 			Operation: types.OpSelect,
-			Target:    types.Table{Name: "users"},
+			Target:    types.Table{Name: "User"},
 		},
 		FieldExpressions: []FieldExpression{
 			{
@@ -698,96 +698,6 @@ func TestMathExpressions(t *testing.T) {
 	}
 }
 
-// Test PostgreSQL Listen/Notify operations.
-func TestListenNotify(t *testing.T) {
-	p := NewProvider()
-
-	t.Run("LISTEN", func(t *testing.T) {
-		ast := &AST{
-			QueryAST: &types.QueryAST{
-				Operation: types.OpListen,
-				Target:    types.Table{Name: "users"},
-			},
-		}
-
-		result, err := p.Render(ast)
-		if err != nil {
-			t.Fatalf("Unexpected error: %v", err)
-		}
-
-		expectedSQL := `LISTEN users_changes`
-		if result.SQL != expectedSQL {
-			t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, result.SQL)
-		}
-
-		if len(result.RequiredParams) != 0 {
-			t.Errorf("Expected no params for LISTEN, got: %v", result.RequiredParams)
-		}
-	})
-
-	t.Run("NOTIFY without payload", func(t *testing.T) {
-		ast := &AST{
-			QueryAST: &types.QueryAST{
-				Operation: types.OpNotify,
-				Target:    types.Table{Name: "orders"},
-			},
-		}
-
-		result, err := p.Render(ast)
-		if err != nil {
-			t.Fatalf("Unexpected error: %v", err)
-		}
-
-		expectedSQL := `NOTIFY orders_changes`
-		if result.SQL != expectedSQL {
-			t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, result.SQL)
-		}
-	})
-
-	t.Run("NOTIFY with payload", func(t *testing.T) {
-		ast := &AST{
-			QueryAST: &types.QueryAST{
-				Operation:     types.OpNotify,
-				Target:        types.Table{Name: "events"},
-				NotifyPayload: &types.Param{Name: "payload"},
-			},
-		}
-
-		result, err := p.Render(ast)
-		if err != nil {
-			t.Fatalf("Unexpected error: %v", err)
-		}
-
-		expectedSQL := `NOTIFY events_changes, :payload`
-		if result.SQL != expectedSQL {
-			t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, result.SQL)
-		}
-
-		if len(result.RequiredParams) != 1 || result.RequiredParams[0] != "payload" {
-			t.Errorf("Expected params [payload], got: %v", result.RequiredParams)
-		}
-	})
-
-	t.Run("UNLISTEN", func(t *testing.T) {
-		ast := &AST{
-			QueryAST: &types.QueryAST{
-				Operation: types.OpUnlisten,
-				Target:    types.Table{Name: "notifications"},
-			},
-		}
-
-		result, err := p.Render(ast)
-		if err != nil {
-			t.Fatalf("Unexpected error: %v", err)
-		}
-
-		expectedSQL := `UNLISTEN notifications_changes`
-		if result.SQL != expectedSQL {
-			t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, result.SQL)
-		}
-	})
-}
-
 // Test aggregates with GROUP BY and HAVING.
 func TestAggregatesGroupByHaving(t *testing.T) {
 	p := NewProvider()
@@ -795,7 +705,7 @@ func TestAggregatesGroupByHaving(t *testing.T) {
 	ast := &AST{
 		QueryAST: &types.QueryAST{
 			Operation: types.OpSelect,
-			Target:    types.Table{Name: "orders"},
+			Target:    types.Table{Name: "Order"},
 		},
 		FieldExpressions: []FieldExpression{
 			{
@@ -862,7 +772,7 @@ func TestCoalesceNullIf(t *testing.T) {
 		ast := &AST{
 			QueryAST: &types.QueryAST{
 				Operation: types.OpSelect,
-				Target:    types.Table{Name: "users"},
+				Target:    types.Table{Name: "User"},
 			},
 			FieldExpressions: []FieldExpression{
 				{
@@ -883,7 +793,7 @@ func TestCoalesceNullIf(t *testing.T) {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
-		expectedSQL := `SELECT COALESCE(:preferredName, :firstName, :defaultName) AS display_name FROM "users"`
+		expectedSQL := `SELECT COALESCE(:preferredName, :firstName, :defaultName) AS display_name FROM "User"`
 		if result.SQL != expectedSQL {
 			t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, result.SQL)
 		}
@@ -893,7 +803,7 @@ func TestCoalesceNullIf(t *testing.T) {
 		ast := &AST{
 			QueryAST: &types.QueryAST{
 				Operation: types.OpSelect,
-				Target:    types.Table{Name: "users"},
+				Target:    types.Table{Name: "User"},
 			},
 			FieldExpressions: []FieldExpression{
 				{
@@ -911,7 +821,7 @@ func TestCoalesceNullIf(t *testing.T) {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
-		expectedSQL := `SELECT NULLIF(:status, :emptyValue) AS real_status FROM "users"`
+		expectedSQL := `SELECT NULLIF(:status, :emptyValue) AS real_status FROM "User"`
 		if result.SQL != expectedSQL {
 			t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, result.SQL)
 		}
@@ -933,7 +843,7 @@ func TestSubqueries(t *testing.T) {
 		ast := &AST{
 			QueryAST: &types.QueryAST{
 				Operation: types.OpSelect,
-				Target:    types.Table{Name: "users"},
+				Target:    types.Table{Name: "User"},
 				WhereClause: SubqueryCondition{
 					Field:    &types.Field{Name: "department_id"},
 					Operator: types.IN,
@@ -947,7 +857,7 @@ func TestSubqueries(t *testing.T) {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 
-		expectedSQL := `SELECT * FROM "users" WHERE "department_id" IN (SELECT "id" FROM "departments" WHERE "active" = :sq1_isActive)`
+		expectedSQL := `SELECT * FROM "User" WHERE "department_id" IN (SELECT "id" FROM "departments" WHERE "active" = :sq1_isActive)`
 		if result.SQL != expectedSQL {
 			t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, result.SQL)
 		}
@@ -961,7 +871,7 @@ func TestSubqueries(t *testing.T) {
 	t.Run("EXISTS subquery", func(t *testing.T) {
 		subqueryAST := &types.QueryAST{
 			Operation: types.OpSelect,
-			Target:    types.Table{Name: "orders"},
+			Target:    types.Table{Name: "Order"},
 			WhereClause: astql.And(
 				FieldComparison{
 					LeftField:  types.Field{Name: "user_id"}.WithTable("o"),
@@ -975,7 +885,7 @@ func TestSubqueries(t *testing.T) {
 		ast := &AST{
 			QueryAST: &types.QueryAST{
 				Operation: types.OpSelect,
-				Target:    types.Table{Name: "users", Alias: "u"},
+				Target:    types.Table{Name: "User", Alias: "u"},
 				WhereClause: SubqueryCondition{
 					Operator: types.EXISTS,
 					Subquery: Subquery{AST: subqueryAST},
@@ -1010,7 +920,7 @@ func TestDeterministicFieldOrder(t *testing.T) {
 			ast := &AST{
 				QueryAST: &types.QueryAST{
 					Operation: types.OpInsert,
-					Target:    types.Table{Name: "users"},
+					Target:    types.Table{Name: "User"},
 					Values: []map[types.Field]types.Param{
 						{
 							types.Field{Name: "name"}:  types.Param{Name: "userName"},
@@ -1037,7 +947,7 @@ func TestDeterministicFieldOrder(t *testing.T) {
 		}
 
 		// Check that fields are in alphabetical order
-		expectedSQL := `INSERT INTO "users" ("age", "city", "email", "name") VALUES (:userAge, :userCity, :userEmail, :userName)`
+		expectedSQL := `INSERT INTO "User" ("age", "city", "email", "name") VALUES (:userAge, :userCity, :userEmail, :userName)`
 		if results[0] != expectedSQL {
 			t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, results[0])
 		}
@@ -1050,7 +960,7 @@ func TestDeterministicFieldOrder(t *testing.T) {
 			ast := &AST{
 				QueryAST: &types.QueryAST{
 					Operation: types.OpUpdate,
-					Target:    types.Table{Name: "users"},
+					Target:    types.Table{Name: "User"},
 					Updates: map[types.Field]types.Param{
 						types.Field{Name: "name"}:       types.Param{Name: "newName"},
 						types.Field{Name: "email"}:      types.Param{Name: "newEmail"},
@@ -1075,7 +985,7 @@ func TestDeterministicFieldOrder(t *testing.T) {
 		}
 
 		// Check that fields are in alphabetical order
-		expectedSQL := `UPDATE "users" SET "email" = :newEmail, "name" = :newName, "updated_at" = :now WHERE "id" = :userId`
+		expectedSQL := `UPDATE "User" SET "email" = :newEmail, "name" = :newName, "updated_at" = :now WHERE "id" = :userId`
 		if results[0] != expectedSQL {
 			t.Errorf("Expected SQL: %s\nGot: %s", expectedSQL, results[0])
 		}

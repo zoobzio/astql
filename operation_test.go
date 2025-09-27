@@ -17,9 +17,6 @@ func TestOperationConstants(t *testing.T) {
 		{"Update", types.OpUpdate, "UPDATE"},
 		{"Delete", types.OpDelete, "DELETE"},
 		{"Count", types.OpCount, "COUNT"},
-		{"Listen", types.OpListen, "LISTEN"},
-		{"Notify", types.OpNotify, "NOTIFY"},
-		{"Unlisten", types.OpUnlisten, "UNLISTEN"},
 	}
 
 	for _, tt := range tests {

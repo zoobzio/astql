@@ -10,9 +10,9 @@ func TestTable(t *testing.T) {
 	SetupTest(t)
 
 	t.Run("Valid table without alias", func(t *testing.T) {
-		table := T("users")
-		if table.Name != "users" {
-			t.Errorf("Expected table name 'users', got '%s'", table.Name)
+		table := T("User")
+		if table.Name != "User" {
+			t.Errorf("Expected table name 'User', got '%s'", table.Name)
 		}
 		if table.Alias != "" {
 			t.Errorf("Expected empty alias, got '%s'", table.Alias)
@@ -20,9 +20,9 @@ func TestTable(t *testing.T) {
 	})
 
 	t.Run("Valid table with alias", func(t *testing.T) {
-		table := T("users", "u")
-		if table.Name != "users" {
-			t.Errorf("Expected table name 'users', got '%s'", table.Name)
+		table := T("User", "u")
+		if table.Name != "User" {
+			t.Errorf("Expected table name 'User', got '%s'", table.Name)
 		}
 		if table.Alias != "u" {
 			t.Errorf("Expected alias 'u', got '%s'", table.Alias)
@@ -30,7 +30,7 @@ func TestTable(t *testing.T) {
 	})
 
 	t.Run("Multiple aliases only use first", func(t *testing.T) {
-		table := T("users", "u", "x", "y")
+		table := T("User", "u", "x", "y")
 		if table.Alias != "u" {
 			t.Errorf("Expected alias 'u', got '%s'", table.Alias)
 		}
@@ -62,31 +62,31 @@ func TestTInvalidCases(t *testing.T) {
 		},
 		{
 			"Invalid alias - uppercase",
-			"users",
+			"User",
 			[]string{"U"},
 			"table alias must be single lowercase letter",
 		},
 		{
 			"Invalid alias - number",
-			"users",
+			"User",
 			[]string{"1"},
 			"table alias must be single lowercase letter",
 		},
 		{
 			"Invalid alias - special char",
-			"users",
+			"User",
 			[]string{"!"},
 			"table alias must be single lowercase letter",
 		},
 		{
 			"Invalid alias - multiple letters",
-			"users",
+			"User",
 			[]string{"ab"},
 			"table alias must be single lowercase letter",
 		},
 		{
 			"Invalid alias - empty",
-			"users",
+			"User",
 			[]string{""},
 			"table alias must be single lowercase letter",
 		},
@@ -122,10 +122,10 @@ func TestTryT(t *testing.T) {
 			wantName  string
 			wantAlias string
 		}{
-			{"Without alias", "users", nil, "users", ""},
-			{"With valid alias", "users", []string{"u"}, "users", "u"},
-			{"Valid single letter aliases", "users", []string{"a"}, "users", "a"},
-			{"Another valid alias", "users", []string{"z"}, "users", "z"},
+			{"Without alias", "User", nil, "User", ""},
+			{"With valid alias", "User", []string{"u"}, "User", "u"},
+			{"Valid single letter aliases", "User", []string{"a"}, "User", "a"},
+			{"Another valid alias", "User", []string{"z"}, "User", "z"},
 		}
 
 		for _, tt := range tests {
@@ -153,8 +153,8 @@ func TestTryT(t *testing.T) {
 			wantErr   string
 		}{
 			{"Invalid table", "invalid_table", nil, "invalid table"},
-			{"Invalid alias uppercase", "users", []string{"U"}, "table alias must be single lowercase letter"},
-			{"Invalid alias multi-char", "users", []string{"usr"}, "table alias must be single lowercase letter"},
+			{"Invalid alias uppercase", "User", []string{"U"}, "table alias must be single lowercase letter"},
+			{"Invalid alias multi-char", "User", []string{"usr"}, "table alias must be single lowercase letter"},
 		}
 
 		for _, tt := range tests {

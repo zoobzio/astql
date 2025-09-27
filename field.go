@@ -1,15 +1,11 @@
 package astql
 
 import (
-	"context"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/zoobzio/astql/internal/types"
-	"github.com/zoobzio/pipz"
 	"github.com/zoobzio/sentinel"
-	"github.com/zoobzio/zlog"
 )
 
 // TryF creates a validated field reference, returning an error if invalid.
@@ -53,14 +49,7 @@ func isValidTableAlias(alias string) bool {
 	return len(alias) == 1 && alias[0] >= 'a' && alias[0] <= 'z'
 }
 
-// Fields are registered automatically when Sentinel extracts metadata from structs.
-var validFields = sync.Map{}
-
-// Aliases are registered from the 'alias' struct tag.
-var validFieldAliases = sync.Map{}
-
-// Tables are registered automatically when Sentinel extracts metadata from structs.
-var validTables = sync.Map{}
+// No global state - we query sentinel directly
 
 // Returns error if field was not found in any scanned struct.
 func validateField(field string) error {
@@ -75,13 +64,17 @@ func validateField(field string) error {
 		fieldName = field[dotIndex+1:]
 	}
 
-	// Don't allow aggregate functions through string fields
-	// They should use FieldsWithAggregates() instead
-
-	if _, exists := validFields.Load(fieldName); !exists {
-		return fmt.Errorf("field '%s' not found - ensure struct is scanned with sentinel.Inspect[T]()", field)
+	// Query sentinel's schema directly
+	schema := sentinel.Schema()
+	for _, metadata := range schema {
+		for _, f := range metadata.Fields {
+			if dbTag, ok := f.Tags["db"]; ok && dbTag == fieldName {
+				return nil // Found it
+			}
+		}
 	}
-	return nil
+
+	return fmt.Errorf("field '%s' not found - ensure struct is scanned with sentinel.Inspect[T]()", field)
 }
 
 // findAS finds the position of " AS " in a string.
@@ -111,10 +104,20 @@ func ValidateField(field string) error {
 
 // Returns error if table was not found in any scanned struct.
 func validateTable(table string) error {
-	if _, exists := validTables.Load(table); !exists {
-		return fmt.Errorf("table '%s' not found - ensure struct is scanned with sentinel.Inspect[T]()", table)
+	// Query sentinel's schema directly
+	schema := sentinel.Schema()
+	for typeName := range schema {
+		// Extract struct name from fully qualified type name
+		if idx := strings.LastIndex(typeName, "."); idx >= 0 {
+			typeName = typeName[idx+1:]
+		}
+		// Use exact struct name as table name - no conversion
+		if typeName == table {
+			return nil // Found it
+		}
 	}
-	return nil
+
+	return fmt.Errorf("table '%s' not found - ensure struct is scanned with sentinel.Inspect[T]()", table)
 }
 
 // ValidateTable is the exported version for use by other packages.
@@ -124,50 +127,29 @@ func ValidateTable(table string) error {
 
 // validateFieldAlias checks if a field alias is allowed in queries.
 func validateFieldAlias(alias string) error {
-	if _, exists := validFieldAliases.Load(alias); !exists {
-		return fmt.Errorf("field alias '%s' not found - ensure struct has alias tag", alias)
-	}
-	return nil
-}
-
-// ValidateFieldAlias is the exported version for use by other packages.
-func ValidateFieldAlias(alias string) error {
-	return validateFieldAlias(alias)
-}
-
-// and registers them as valid field names for queries.
-func extractDBFields(ctx context.Context, metadata sentinel.ModelMetadata) {
-	var dbFields []string
-	for _, field := range metadata.Fields {
-		if dbTag, exists := field.Tags["db"]; exists && dbTag != "-" {
-			// Validate that the db tag is a safe identifier
-			if !isValidSQLIdentifier(dbTag) {
-				// Log warning and skip malicious field
-				fmt.Printf("WARNING: Skipping field %s with unsafe db tag: %s\n", field.Name, dbTag)
-				continue
-			}
-			// Use the db tag value as the field name (e.g. db:"user_id" -> "user_id")
-			dbFields = append(dbFields, dbTag)
-
-			// Also process alias tag if present
-			if aliasTag, exists := field.Tags["alias"]; exists && aliasTag != "" {
+	// Query sentinel's schema directly for alias tags
+	schema := sentinel.Schema()
+	for _, metadata := range schema {
+		for _, f := range metadata.Fields {
+			if aliasTag, ok := f.Tags["alias"]; ok {
 				// Split comma-separated aliases
 				aliases := strings.Split(aliasTag, ",")
-				for _, alias := range aliases {
-					alias = strings.TrimSpace(alias)
-					if isValidSQLIdentifier(alias) {
-						validFieldAliases.Store(alias, true)
-						zlog.Debug(ctx, "Registered field alias", zlog.String("alias", alias), zlog.String("field", field.Name))
-					} else {
-						fmt.Printf("WARNING: Skipping unsafe alias '%s' for field %s\n", alias, field.Name)
+				for _, a := range aliases {
+					a = strings.TrimSpace(a)
+					if a == alias {
+						return nil // Found it
 					}
 				}
 			}
 		}
 	}
-	for _, field := range dbFields {
-		validFields.Store(field, true)
-	}
+
+	return fmt.Errorf("field alias '%s' not found - ensure struct has alias tag", alias)
+}
+
+// ValidateFieldAlias is the exported version for use by other packages.
+func ValidateFieldAlias(alias string) error {
+	return validateFieldAlias(alias)
 }
 
 // Only allows alphanumeric characters and underscores, must start with letter or underscore.
@@ -234,23 +216,6 @@ func isValidSQLIdentifier(s string) bool {
 	return true
 }
 
-// and automatically registers valid field names and table names.
-var fieldExtractionHook = pipz.Apply[zlog.Event[sentinel.ExtractionEvent]]("astql-fields", func(ctx context.Context, event zlog.Event[sentinel.ExtractionEvent]) (zlog.Event[sentinel.ExtractionEvent], error) {
-	// Extract field names from the metadata
-	extractDBFields(ctx, event.Data.Metadata)
-
-	// Extract and register table name from type name
-	tableName := typeNameToTableName(event.Data.TypeName)
-	// Validate the generated table name
-	if isValidSQLIdentifier(tableName) {
-		validTables.Store(tableName, true)
-	} else {
-		fmt.Printf("WARNING: Skipping type %s - generated unsafe table name: %s\n", event.Data.TypeName, tableName)
-	}
-
-	return event, nil
-})
-
 // e.g., "User" -> "users", "OrderItem" -> "order_items".
 func typeNameToTableName(typeName string) string {
 	// Simple pluralization - add 's' to lowercase
@@ -271,11 +236,8 @@ func typeNameToTableName(typeName string) string {
 	return result
 }
 
-// when structs are scanned.
+// Set up table validator on init.
 func init() {
 	// Set up the table validator for types.Field.WithTable
 	types.SetTableValidator(validateTableOrAlias)
-
-	// Use the typed logger API to hook into METADATA_EXTRACTED events
-	sentinel.Logger.Extraction.Hook("METADATA_EXTRACTED", fieldExtractionHook)
 }

@@ -185,59 +185,6 @@ func TestValidateUpdateDelete(t *testing.T) {
 	}
 }
 
-func TestValidateNotifyOperations(t *testing.T) {
-
-	t.Run("NOTIFY without payload", func(t *testing.T) {
-		ast := &AST{
-			QueryAST: &types.QueryAST{
-				Operation: types.OpNotify,
-				Target:    types.Table{Name: "events"},
-			},
-		}
-
-		err := ast.Validate()
-		if err != nil {
-			t.Errorf("Expected no error for NOTIFY without payload, got: %v", err)
-		}
-	})
-
-	t.Run("NOTIFY with payload", func(t *testing.T) {
-		ast := &AST{
-			QueryAST: &types.QueryAST{
-				Operation:     types.OpNotify,
-				Target:        types.Table{Name: "events"},
-				NotifyPayload: func() *types.Param { p := types.Param{Name: "message"}; return &p }(),
-			},
-		}
-
-		err := ast.Validate()
-		if err != nil {
-			t.Errorf("Expected no error for NOTIFY with payload, got: %v", err)
-		}
-	})
-}
-
-func TestValidateListenUnlisten(t *testing.T) {
-
-	operations := []types.Operation{types.OpListen, types.OpUnlisten}
-
-	for _, op := range operations {
-		t.Run(string(op), func(t *testing.T) {
-			ast := &AST{
-				QueryAST: &types.QueryAST{
-					Operation: op,
-					Target:    types.Table{Name: "notifications"},
-				},
-			}
-
-			err := ast.Validate()
-			if err != nil {
-				t.Errorf("Expected no error for %s, got: %v", op, err)
-			}
-		})
-	}
-}
-
 func TestValidateComplexStructures(t *testing.T) {
 
 	t.Run("SELECT with all PostgreSQL features", func(t *testing.T) {

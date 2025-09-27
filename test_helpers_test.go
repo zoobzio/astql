@@ -1,35 +1,10 @@
 package astql
 
 import (
-	"context"
-	"fmt"
-	"sync"
 	"testing"
 
 	"github.com/zoobzio/sentinel"
 )
-
-var initOnce sync.Once
-
-// initSentinel initializes sentinel admin exactly once per process.
-// This is idempotent and safe to call from multiple tests.
-func initSentinel() {
-	initOnce.Do(func() {
-		ctx := context.Background()
-		// Create the singleton admin instance
-		admin, err := sentinel.NewAdmin()
-		if err != nil {
-			// This should never happen with sync.Once
-			panic(fmt.Sprintf("Failed to create sentinel admin: %v", err))
-		}
-
-		// Seal the configuration
-		// After this, no policy changes are allowed
-		if err := admin.Seal(ctx); err != nil {
-			panic(fmt.Sprintf("Failed to seal sentinel admin: %v", err))
-		}
-	})
-}
 
 // Test structs for proper registration with sentinel
 
@@ -62,21 +37,10 @@ type Product struct {
 func RegisterTestStructs(t *testing.T) {
 	t.Helper()
 
-	// Ensure sentinel is initialized first
-	initSentinel()
-
-	// The field extraction hook in init() should process these automatically
-	// when we call Inspect
-	ctx := context.Background()
-
-	// Register User struct
-	sentinel.Inspect[User](ctx)
-
-	// Register Order struct
-	sentinel.Inspect[Order](ctx)
-
-	// Register Product struct
-	sentinel.Inspect[Product](ctx)
+	// Just inspect the structs with sentinel - no registration needed
+	sentinel.Inspect[User]()
+	sentinel.Inspect[Order]()
+	sentinel.Inspect[Product]()
 }
 
 // SetupTest initializes test environment.

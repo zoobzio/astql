@@ -6,14 +6,11 @@ import "fmt"
 type Operation string
 
 const (
-	OpSelect   Operation = "SELECT"
-	OpInsert   Operation = "INSERT"
-	OpUpdate   Operation = "UPDATE"
-	OpDelete   Operation = "DELETE"
-	OpCount    Operation = "COUNT"
-	OpListen   Operation = "LISTEN"
-	OpNotify   Operation = "NOTIFY"
-	OpUnlisten Operation = "UNLISTEN"
+	OpSelect Operation = "SELECT"
+	OpInsert Operation = "INSERT"
+	OpUpdate Operation = "UPDATE"
+	OpDelete Operation = "DELETE"
+	OpCount  Operation = "COUNT"
 )
 
 // Direction represents sort direction.
@@ -36,16 +33,15 @@ type OrderBy struct {
 //
 //nolint:govet // fieldalignment: Logical grouping is preferred over memory optimization
 type QueryAST struct {
-	Operation     Operation
-	Target        Table
-	Fields        []Field
-	WhereClause   ConditionItem
-	Ordering      []OrderBy
-	Limit         *int
-	Offset        *int
-	Updates       map[Field]Param   // For UPDATE operations
-	Values        []map[Field]Param // For INSERT operations
-	NotifyPayload *Param            // For NOTIFY operations
+	Operation   Operation
+	Target      Table
+	Fields      []Field
+	WhereClause ConditionItem
+	Ordering    []OrderBy
+	Limit       *int
+	Offset      *int
+	Updates     map[Field]Param   // For UPDATE operations
+	Values      []map[Field]Param // For INSERT operations
 }
 
 // Validate performs basic validation on the AST.
@@ -86,12 +82,6 @@ func (ast *QueryAST) Validate() error {
 		// No additional validation needed
 	case OpCount:
 		// No additional validation needed - COUNT can have WHERE but no fields
-	case OpListen, OpUnlisten:
-		// No additional validation needed - just need table name
-	case OpNotify:
-		if ast.NotifyPayload == nil {
-			return fmt.Errorf("NOTIFY requires a payload parameter")
-		}
 	default:
 		return fmt.Errorf("unsupported operation: %s", ast.Operation)
 	}

@@ -63,36 +63,6 @@ func Count(table types.Table) *Builder {
 	}
 }
 
-// Listen creates a new PostgreSQL LISTEN query builder.
-func Listen(table types.Table) *Builder {
-	builder := astql.Listen(table)
-	pgAst := NewAST(builder.GetAST())
-	return &Builder{
-		Builder: builder,
-		pgAst:   pgAst,
-	}
-}
-
-// Notify creates a new PostgreSQL NOTIFY query builder.
-func Notify(table types.Table, payload types.Param) *Builder {
-	builder := astql.Notify(table, payload)
-	pgAst := NewAST(builder.GetAST())
-	return &Builder{
-		Builder: builder,
-		pgAst:   pgAst,
-	}
-}
-
-// Unlisten creates a new PostgreSQL UNLISTEN query builder.
-func Unlisten(table types.Table) *Builder {
-	builder := astql.Unlisten(table)
-	pgAst := NewAST(builder.GetAST())
-	return &Builder{
-		Builder: builder,
-		pgAst:   pgAst,
-	}
-}
-
 // Distinct sets the DISTINCT flag for SELECT queries.
 func (b *Builder) Distinct() *Builder {
 	if b.GetError() != nil {
@@ -126,6 +96,11 @@ func (b *Builder) RightJoin(table types.Table, on types.ConditionItem) *Builder 
 	return b.addJoin(RightJoin, table, on)
 }
 
+// CrossJoin adds a CROSS JOIN (no ON clause needed).
+func (b *Builder) CrossJoin(table types.Table) *Builder {
+	return b.addJoin(CrossJoin, table, nil)
+}
+
 // addJoin is a helper to add joins.
 func (b *Builder) addJoin(joinType JoinType, table types.Table, on types.ConditionItem) *Builder {
 	if b.GetError() != nil {
@@ -133,6 +108,14 @@ func (b *Builder) addJoin(joinType JoinType, table types.Table, on types.Conditi
 	}
 	if b.pgAst.Operation != types.OpSelect && b.pgAst.Operation != types.OpCount {
 		b.SetError(fmt.Errorf("JOIN can only be used with SELECT or COUNT queries"))
+		return b
+	}
+	if joinType == CrossJoin && on != nil {
+		b.SetError(fmt.Errorf("CROSS JOIN cannot have ON clause"))
+		return b
+	}
+	if joinType != CrossJoin && on == nil {
+		b.SetError(fmt.Errorf("%s requires ON clause", joinType))
 		return b
 	}
 
@@ -224,13 +207,37 @@ func (cb *ConflictBuilder) DoNothing() *Builder {
 }
 
 // DoUpdate sets the conflict action to DO UPDATE.
-func (cb *ConflictBuilder) DoUpdate(updates map[types.Field]types.Param) *Builder {
+func (cb *ConflictBuilder) DoUpdate() *UpdateBuilder {
 	if cb.err != nil {
-		return cb.builder
+		return &UpdateBuilder{builder: cb.builder, err: cb.err}
 	}
 	cb.builder.pgAst.OnConflict.Action = DoUpdate
-	cb.builder.pgAst.OnConflict.Updates = updates
-	return cb.builder
+	cb.builder.pgAst.OnConflict.Updates = make(map[types.Field]types.Param)
+	return &UpdateBuilder{
+		builder: cb.builder,
+		updates: cb.builder.pgAst.OnConflict.Updates,
+	}
+}
+
+// UpdateBuilder handles DO UPDATE SET clause construction.
+type UpdateBuilder struct {
+	builder *Builder
+	updates map[types.Field]types.Param
+	err     error
+}
+
+// Set adds a field to update on conflict.
+func (ub *UpdateBuilder) Set(field types.Field, param types.Param) *UpdateBuilder {
+	if ub.err != nil {
+		return ub
+	}
+	ub.updates[field] = param
+	return ub
+}
+
+// Build finalizes the update and returns the builder.
+func (ub *UpdateBuilder) Build() *Builder {
+	return ub.builder
 }
 
 // SelectExpr adds a field expression (aggregate, case, etc) to SELECT.

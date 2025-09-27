@@ -1,7 +1,6 @@
 package postgres
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -14,7 +13,7 @@ func ExampleBuildFromSchema_yaml() {
 	// Example YAML content that an LLM might generate
 	yamlContent := `
 operation: SELECT
-table: users
+table: User
 fields: 
   - id
   - name
@@ -35,10 +34,8 @@ limit: 10
 		panic(err)
 	}
 
-	// Set up Sentinel (would normally be done once at startup)
-	initSentinel()
-	ctx := context.Background()
-	sentinel.Inspect[User](ctx)
+	// Register struct with sentinel
+	sentinel.Inspect[User]()
 
 	// Build AST from schema
 	ast, err := BuildFromSchema(&schema)
@@ -56,7 +53,7 @@ limit: 10
 
 	// Output:
 	// Operation: SELECT
-	// Table: users
+	// Table: User
 	// Fields: 3
 	// Has WHERE: true
 	// Has ORDER BY: true
@@ -67,7 +64,7 @@ func ExampleBuildFromSchema_json() {
 	// Example JSON content that an LLM might generate
 	jsonContent := `{
 		"operation": "INSERT",
-		"table": "users",
+		"table": "User",
 		"values": [{
 			"name": "userName",
 			"email": "userEmail"
@@ -81,10 +78,8 @@ func ExampleBuildFromSchema_json() {
 		panic(err)
 	}
 
-	// Set up Sentinel (would normally be done once at startup)
-	initSentinel()
-	ctx := context.Background()
-	sentinel.Inspect[User](ctx)
+	// Register struct with sentinel
+	sentinel.Inspect[User]()
 
 	// Build AST from schema
 	ast, err := BuildFromSchema(&schema)

@@ -1,29 +1,10 @@
 package postgres
 
 import (
-	"context"
-	"fmt"
-	"sync"
 	"testing"
 
 	"github.com/zoobzio/sentinel"
 )
-
-var initOnce sync.Once
-
-// initSentinel initializes sentinel admin exactly once per process.
-func initSentinel() {
-	initOnce.Do(func() {
-		ctx := context.Background()
-		admin, err := sentinel.NewAdmin()
-		if err != nil {
-			panic(fmt.Sprintf("Failed to create sentinel admin: %v", err))
-		}
-		if err := admin.Seal(ctx); err != nil {
-			panic(fmt.Sprintf("Failed to seal sentinel admin: %v", err))
-		}
-	})
-}
 
 // Test structs that match what the schema tests expect
 
@@ -62,17 +43,12 @@ type ActiveUser struct {
 func RegisterTestStructs(t *testing.T) {
 	t.Helper()
 
-	// Ensure sentinel is initialized first
-	initSentinel()
-
-	ctx := context.Background()
-
-	// Register all test structs
-	sentinel.Inspect[User](ctx)
-	sentinel.Inspect[Post](ctx)
-	sentinel.Inspect[Order](ctx)
-	sentinel.Inspect[Customer](ctx)
-	sentinel.Inspect[ActiveUser](ctx)
+	// Just inspect the structs with sentinel - no registration needed
+	sentinel.Inspect[User]()
+	sentinel.Inspect[Post]()
+	sentinel.Inspect[Order]()
+	sentinel.Inspect[Customer]()
+	sentinel.Inspect[ActiveUser]()
 }
 
 // SetupTest initializes test environment.

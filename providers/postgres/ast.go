@@ -13,6 +13,7 @@ const (
 	InnerJoin JoinType = "INNER JOIN"
 	LeftJoin  JoinType = "LEFT JOIN"
 	RightJoin JoinType = "RIGHT JOIN"
+	CrossJoin JoinType = "CROSS JOIN"
 )
 
 // Join represents a SQL JOIN clause.
@@ -82,20 +83,9 @@ func NewAST(base *types.QueryAST) *AST {
 
 // Validate extends base validation with PostgreSQL-specific rules.
 func (ast *AST) Validate() error {
-	// Custom validation for PostgreSQL-specific operations first
-	switch ast.Operation {
-	case types.OpNotify:
-		// PostgreSQL NOTIFY is valid with or without payload
-		// No additional validation needed
-
-	case types.OpListen, types.OpUnlisten:
-		// These operations don't need payload validation
-
-	default:
-		// For other operations, use base validation
-		if err := ast.QueryAST.Validate(); err != nil {
-			return err
-		}
+	// Use base validation
+	if err := ast.QueryAST.Validate(); err != nil {
+		return err
 	}
 
 	// PostgreSQL-specific validation

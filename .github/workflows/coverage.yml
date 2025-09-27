@@ -1,0 +1,218 @@
+name: Coverage
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  coverage:
+    name: Test Coverage Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for better diff coverage
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+        cache: true
+    
+    - name: Install dependencies
+      run: |
+        go mod download
+        go install github.com/boumenot/gocover-cobertura@latest
+    
+    - name: Run tests with coverage
+      run: |
+        # Test main package
+        echo "=== Testing main package ==="
+        go test -v -race -coverprofile=coverage-main.out -covermode=atomic \
+          -coverpkg=github.com/zoobzio/astql ./...
+        
+        # Test PostgreSQL provider
+        echo "=== Testing PostgreSQL provider ==="
+        go test -v -race -coverprofile=coverage-postgres.out -covermode=atomic \
+          ./providers/postgres
+        
+        # Test SQLite provider
+        echo "=== Testing SQLite provider ==="
+        go test -v -race -coverprofile=coverage-sqlite.out -covermode=atomic \
+          ./providers/sqlite
+        
+        # Merge coverage files
+        echo "mode: atomic" > coverage-all.out
+        tail -n +2 coverage-main.out >> coverage-all.out
+        tail -n +2 coverage-postgres.out >> coverage-all.out
+        tail -n +2 coverage-sqlite.out >> coverage-all.out
+        
+        # Generate coverage report
+        go tool cover -func=coverage-all.out > coverage-summary.txt
+        echo "Overall Coverage Summary:"
+        tail -1 coverage-summary.txt
+        
+        # Generate HTML report
+        go tool cover -html=coverage-all.out -o coverage-all.html
+        
+        # Convert to Cobertura format for better PR integration
+        gocover-cobertura < coverage-all.out > coverage-all.xml
+    
+    - name: Generate provider-specific reports
+      run: |
+        echo "=== Provider Coverage Reports ==="
+        
+        # PostgreSQL coverage
+        go tool cover -func=coverage-postgres.out | tail -1 | awk '{print "PostgreSQL Provider: " $3}'
+        
+        # SQLite coverage
+        go tool cover -func=coverage-sqlite.out | tail -1 | awk '{print "SQLite Provider: " $3}'
+        
+        # Main package coverage
+        go tool cover -func=coverage-main.out | tail -1 | awk '{print "Main Package: " $3}'
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage-all.out
+        flags: unit
+        name: astql-coverage
+        fail_ci_if_error: false
+        verbose: true
+    
+    - name: Generate coverage badge
+      run: |
+        # Extract coverage percentage
+        COVERAGE=$(go tool cover -func=coverage-all.out | tail -1 | grep -oE '[0-9]+\.[0-9]+' | tail -1)
+        echo "Overall coverage: $COVERAGE%"
+        echo "COVERAGE=$COVERAGE" >> $GITHUB_ENV
+        
+        # Determine badge color
+        if awk "BEGIN {exit !($COVERAGE >= 80)}"; then
+          COLOR="green"
+        elif awk "BEGIN {exit !($COVERAGE >= 70)}"; then
+          COLOR="yellow"
+        else
+          COLOR="red"
+        fi
+        echo "COVERAGE_COLOR=$COLOR" >> $GITHUB_ENV
+    
+    - name: Create coverage comment (PR only)
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          
+          // Read coverage summary
+          const summary = fs.readFileSync('coverage-summary.txt', 'utf8');
+          const lines = summary.split('\n').filter(line => line.trim());
+          
+          // Extract key metrics
+          const totalLine = lines[lines.length - 1];
+          const coverage = totalLine.match(/(\d+\.\d+)%/)?.[1] || 'N/A';
+          
+          // Extract provider coverage from stdout (would need to be saved to file)
+          const providerMetrics = `
+          | Provider | Coverage |
+          |----------|----------|
+          | PostgreSQL | See CI logs |
+          | SQLite | See CI logs |
+          | Main Package | See CI logs |
+          `;
+          
+          // Create comment body
+          const body = `## 📊 Coverage Report
+          
+          **Total Coverage:** ${coverage}%
+          
+          ### Coverage by Provider
+          ${providerMetrics}
+          
+          ### Coverage by Package
+          \`\`\`
+          ${lines.slice(0, -1).join('\n')}
+          \`\`\`
+          
+          <details>
+          <summary>View Coverage Details</summary>
+          
+          Coverage reports are available in the Actions artifacts.
+          
+          - HTML Report: Download from artifacts
+          - Detailed breakdown by file available in CI logs
+          
+          </details>
+          
+          ---
+          *Coverage standards: ≥70% (passing), ≥80% (excellent)*`;
+          
+          // Post or update comment
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          
+          const botComment = comments.find(comment => 
+            comment.user.type === 'Bot' && comment.body.includes('📊 Coverage Report')
+          );
+          
+          if (botComment) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: botComment.id,
+              body: body
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+          }
+      continue-on-error: true
+    
+    - name: Upload coverage artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-reports
+        path: |
+          coverage-*.out
+          coverage-*.html
+          coverage-*.xml
+          coverage-summary.txt
+        retention-days: 30
+    
+    - name: Coverage summary
+      run: |
+        echo "### 📊 Test Coverage Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Overall Coverage:** ${{ env.COVERAGE }}%" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "#### Coverage by Package" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        head -n -1 coverage-summary.txt >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "#### Provider Coverage" >> $GITHUB_STEP_SUMMARY
+        echo "- PostgreSQL: $(go tool cover -func=coverage-postgres.out | tail -1 | awk '{print $3}')" >> $GITHUB_STEP_SUMMARY
+        echo "- SQLite: $(go tool cover -func=coverage-sqlite.out | tail -1 | awk '{print $3}')" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "#### Coverage Standards" >> $GITHUB_STEP_SUMMARY
+        echo "- 🎯 Target: 70% overall" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Passing: ≥ 70%" >> $GITHUB_STEP_SUMMARY
+        echo "- ⚠️ Warning: 60-70%" >> $GITHUB_STEP_SUMMARY
+        echo "- ❌ Failing: < 60%" >> $GITHUB_STEP_SUMMARY

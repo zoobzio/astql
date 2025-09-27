@@ -1,10 +1,11 @@
-# ASTQL - Abstract Syntax Tree Query Language
-
 [![CI](https://github.com/zoobzio/astql/actions/workflows/ci.yml/badge.svg)](https://github.com/zoobzio/astql/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/zoobzio/astql/branch/main/graph/badge.svg)](https://codecov.io/gh/zoobzio/astql)
 [![CodeQL](https://github.com/zoobzio/astql/actions/workflows/codeql.yml/badge.svg)](https://github.com/zoobzio/astql/actions/workflows/codeql.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/zoobzio/astql)](https://goreportcard.com/report/github.com/zoobzio/astql)
 [![Go Reference](https://pkg.go.dev/badge/github.com/zoobzio/astql.svg)](https://pkg.go.dev/github.com/zoobzio/astql)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+# ASTQL - Abstract Syntax Tree Query Language
 
 ASTQL is a secure, type-safe SQL query builder for Go that uses an Abstract Syntax Tree (AST) approach to prevent SQL injection attacks. It provides a fluent API for building complex SQL queries programmatically while maintaining strict validation and type safety.
 
@@ -24,6 +25,7 @@ ASTQL is a secure, type-safe SQL query builder for Go that uses an Abstract Synt
 2. **Validation at Creation** - Invalid fields/tables cause immediate panics, not runtime SQL errors
 3. **Parameters Only** - User values can only be passed as parameters, never as raw SQL
 4. **Clean Separation** - AST structure is separate from SQL rendering (providers)
+5. **Exact Naming** - Table names must exactly match struct names (e.g., `User` not `users`)
 
 ## Installation
 
@@ -43,9 +45,9 @@ import (
 )
 
 func main() {
-    // Define tables and fields
-    users := astql.T("users", "u")
-    posts := astql.T("posts", "p")
+    // Define tables and fields - must match struct names exactly
+    users := astql.T("User", "u")
+    posts := astql.T("Post", "p")
     
     // Build a complex query
     query := postgres.Select(users).
@@ -71,7 +73,7 @@ func main() {
     // Generate SQL
     sql, params := postgres.NewProvider().ToSQL(ast)
     fmt.Println(sql)
-    // Output: SELECT u.id, u.username, u.email FROM users AS u INNER JOIN posts AS p ON u.id = p.user_id WHERE (u.active = $1 AND u.created_at >= $2) ORDER BY u.created_at DESC LIMIT 10
+    // Output: SELECT u.id, u.username, u.email FROM User AS u INNER JOIN Post AS p ON u.id = p.user_id WHERE (u.active = $1 AND u.created_at >= $2) ORDER BY u.created_at DESC LIMIT 10
 }
 ```
 
@@ -79,7 +81,7 @@ func main() {
 
 ```go
 // SELECT specific fields
-query := postgres.Select(astql.T("users")).
+query := postgres.Select(astql.T("User")).
     Fields(
         astql.F("id"),
         astql.F("name"),
@@ -90,7 +92,7 @@ query := postgres.Select(astql.T("users")).
     Limit(10)
 
 // INSERT with RETURNING
-query := postgres.Insert(astql.T("users")).
+query := postgres.Insert(astql.T("User")).
     Values(map[types.Field]types.Param{
         astql.F("name"):  astql.P("userName"),
         astql.F("email"): astql.P("userEmail"),
@@ -99,7 +101,7 @@ query := postgres.Insert(astql.T("users")).
     Returning(astql.F("id"), astql.F("created_at"))
 
 // UPDATE with complex WHERE
-query := postgres.Update(astql.T("users")).
+query := postgres.Update(astql.T("User")).
     Set(astql.F("name"), astql.P("newName")).
     Set(astql.F("updated_at"), astql.P("now")).
     Where(astql.And(
@@ -195,18 +197,18 @@ if err != nil {
 ## Provider Support
 
 Currently supported:
-- **PostgreSQL**: Full support including LISTEN/NOTIFY, ON CONFLICT, and advanced features
+- **PostgreSQL**: Full support including ON CONFLICT, RETURNING, and advanced SQL features
+- **SQLite**: Support for core features with OR IGNORE/REPLACE, RETURNING (3.35.0+), and adapted SQL features
 
 Coming soon:
 - MySQL/MariaDB
-- SQLite
 - Microsoft SQL Server
 
 ## Advanced Features
 
 ### Subqueries
 ```go
-subquery := postgres.Select(astql.T("orders")).
+subquery := postgres.Select(astql.T("Order")).
     Fields(astql.F("user_id")).
     Where(astql.C(astql.F("total"), astql.GT, astql.P("min_total")))
 
@@ -223,18 +225,6 @@ caseExpr := postgres.Case().
     Else(astql.P("senior"))
 
 query := postgres.Select(users).SelectExpr(caseExpr.As("age_group"))
-```
-
-### Listen/Notify (PostgreSQL)
-```go
-// Listen for events
-listen := postgres.Listen(astql.T("user_updates"))
-
-// Notify with payload
-notify := postgres.Notify(
-    astql.T("user_updates"), 
-    astql.P("payload"),
-)
 ```
 
 ## Integration with Sentinel
@@ -256,12 +246,41 @@ admin.Seal()
 sentinel.Inspect[User]()
 
 // Now these are valid:
+astql.T("User")   // ✓ Exact struct name
 astql.F("id")     // ✓
 astql.F("name")   // ✓
 astql.F("email")  // ✓
 
-// This will panic:
+// These will panic:
+astql.T("users")         // ✗ panic: table 'users' not found (must use "User")
 astql.F("invalid_field") // ✗ panic: invalid field
+```
+
+## Error Handling Philosophy
+
+ASTQL follows a **fail-fast** approach for query construction:
+
+### Panics (Immediate Failures)
+These indicate programming errors that should be caught during development:
+- Invalid table names (not registered with Sentinel)
+- Invalid field names (not in struct)
+- Invalid parameter names (SQL keywords, special characters)
+- Invalid aliases (not single lowercase letter for tables)
+
+```go
+// These panic immediately:
+astql.T("nonexistent")  // panic: table not found
+astql.F("bad_field")    // panic: field not found
+astql.P("SELECT")       // panic: SQL keyword not allowed
+```
+
+### Try Variants (Graceful Errors)
+For dynamic query construction, use Try variants:
+
+```go
+table, err := astql.TryT(userInput)  // Returns error instead of panic
+field, err := astql.TryF(fieldName)  // Safe for runtime validation
+param, err := astql.TryP(paramName)  // Validates parameter names
 ```
 
 ## Testing
@@ -285,11 +304,11 @@ make ci
 
 ## Contributing
 
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details on how to get started.
 
 ### Security
 
-For security vulnerabilities, please email alex@zoobz.io instead of creating a public issue.
+For security vulnerabilities, please see our [Security Policy](SECURITY.md) for responsible disclosure guidelines. Please do not create public issues for security vulnerabilities.
 
 ## License
 

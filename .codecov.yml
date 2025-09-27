@@ -1,0 +1,55 @@
+codecov:
+  require_ci_to_pass: yes
+  notify:
+    wait_for_ci: yes
+
+coverage:
+  precision: 2
+  round: down
+  range: "60...100"
+  
+  status:
+    project:
+      default:
+        target: 70%
+        threshold: 1%
+        paths:
+          - "!**/*_test.go"
+          - "!**/test_*.go"
+          - "!internal/types/*.go"  # Interface definitions
+    
+    patch:
+      default:
+        target: 70%
+        threshold: 1%
+    
+    changes: no
+
+parsers:
+  gcov:
+    branch_detection:
+      conditional: yes
+      loop: yes
+      method: no
+      macro: no
+
+comment:
+  layout: "reach,diff,flags,files,footer"
+  behavior: default
+  require_changes: no
+  require_base: no
+  require_head: yes
+  hide_project_coverage: false
+
+ignore:
+  - "**/*_test.go"
+  - "**/test_*.go"
+  - "**/*.pb.go"
+  - "**/mock_*.go"
+  - "internal/types/*.go"  # Interface definitions
+
+flags:
+  unit:
+    paths:
+      - "!**/*_test.go"
+    carryforward: true
