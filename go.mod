@@ -1,6 +1,8 @@
 module github.com/zoobzio/astql
 
-go 1.23
+go 1.23.2
+
+toolchain go1.24.5
 
 require (
 	github.com/zoobzio/sentinel v0.0.4
