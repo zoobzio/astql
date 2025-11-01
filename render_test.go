@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/zoobzio/astql"
-	"github.com/zoobzio/astql/internal/types"
 	"github.com/zoobzio/dbml"
 )
 
@@ -313,10 +312,8 @@ func TestRender_Insert_Basic(t *testing.T) {
 	instance := createRenderTestInstance(t)
 
 	result, err := astql.Insert(instance.T("users")).
-		Values(map[types.Field]types.Param{
-			instance.F("username"): instance.P("username"),
-			instance.F("email"):    instance.P("email"),
-		}).
+		Value(instance.F("username"), instance.P("username")).
+		Value(instance.F("email"), instance.P("email")).
 		Render()
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
@@ -337,9 +334,7 @@ func TestRender_Insert_WithReturning(t *testing.T) {
 	instance := createRenderTestInstance(t)
 
 	result, err := astql.Insert(instance.T("users")).
-		Values(map[types.Field]types.Param{
-			instance.F("username"): instance.P("username"),
-		}).
+		Value(instance.F("username"), instance.P("username")).
 		Returning(instance.F("id"), instance.F("created_at")).
 		Render()
 	if err != nil {
@@ -356,10 +351,8 @@ func TestRender_Insert_OnConflictDoNothing(t *testing.T) {
 	instance := createRenderTestInstance(t)
 
 	result, err := astql.Insert(instance.T("users")).
-		Values(map[types.Field]types.Param{
-			instance.F("username"): instance.P("username"),
-			instance.F("email"):    instance.P("email"),
-		}).
+		Value(instance.F("username"), instance.P("username")).
+		Value(instance.F("email"), instance.P("email")).
 		OnConflict(instance.F("email")).DoNothing().
 		Render()
 	if err != nil {
@@ -376,10 +369,8 @@ func TestRender_Insert_OnConflictDoUpdate(t *testing.T) {
 	instance := createRenderTestInstance(t)
 
 	result, err := astql.Insert(instance.T("users")).
-		Values(map[types.Field]types.Param{
-			instance.F("username"): instance.P("username"),
-			instance.F("email"):    instance.P("email"),
-		}).
+		Value(instance.F("username"), instance.P("username")).
+		Value(instance.F("email"), instance.P("email")).
 		OnConflict(instance.F("email")).
 		DoUpdate().
 		Set(instance.F("username"), instance.P("new_username")).

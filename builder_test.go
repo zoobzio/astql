@@ -55,11 +55,8 @@ func TestInsert(t *testing.T) {
 	instance := createBuilderTestInstance(t)
 	table := instance.T("users")
 
-	values := map[types.Field]types.Param{
-		instance.F("username"): instance.P("username"),
-	}
-
-	builder := astql.Insert(table).Values(values)
+	builder := astql.Insert(table).
+		Value(instance.F("username"), instance.P("username"))
 	ast, err := builder.Build()
 
 	if err != nil {
@@ -234,16 +231,13 @@ func TestSet_WrongOperation(t *testing.T) {
 	}
 }
 
-func TestValues(t *testing.T) {
+func TestValue(t *testing.T) {
 	instance := createBuilderTestInstance(t)
 	table := instance.T("users")
 
-	values := map[types.Field]types.Param{
-		instance.F("username"): instance.P("username"),
-		instance.F("email"):    instance.P("email"),
-	}
-
-	builder := astql.Insert(table).Values(values)
+	builder := astql.Insert(table).
+		Value(instance.F("username"), instance.P("username")).
+		Value(instance.F("email"), instance.P("email"))
 
 	ast, err := builder.Build()
 	if err != nil {
@@ -252,21 +246,78 @@ func TestValues(t *testing.T) {
 	if len(ast.Values) != 1 {
 		t.Errorf("Expected 1 value set, got %d", len(ast.Values))
 	}
+	if len(ast.Values[0]) != 2 {
+		t.Errorf("Expected 2 fields in value set, got %d", len(ast.Values[0]))
+	}
 }
 
-func TestValues_WrongOperation(t *testing.T) {
+func TestValue_WrongOperation(t *testing.T) {
 	instance := createBuilderTestInstance(t)
 	table := instance.T("users")
 
-	values := map[types.Field]types.Param{
-		instance.F("username"): instance.P("username"),
-	}
-
-	builder := astql.Select(table).Values(values)
+	builder := astql.Select(table).
+		Value(instance.F("username"), instance.P("username"))
 
 	_, err := builder.Build()
 	if err == nil {
-		t.Fatal("Expected error when using Values() with SELECT")
+		t.Fatal("Expected error when using Value() with SELECT")
+	}
+}
+
+func TestNextRow(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+	table := instance.T("users")
+
+	builder := astql.Insert(table).
+		Value(instance.F("username"), instance.P("user1")).
+		Value(instance.F("email"), instance.P("email1")).
+		NextRow().
+		Value(instance.F("username"), instance.P("user2")).
+		Value(instance.F("email"), instance.P("email2"))
+
+	ast, err := builder.Build()
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if len(ast.Values) != 2 {
+		t.Errorf("Expected 2 value sets, got %d", len(ast.Values))
+	}
+	if len(ast.Values[0]) != 2 {
+		t.Errorf("Expected 2 fields in first value set, got %d", len(ast.Values[0]))
+	}
+	if len(ast.Values[1]) != 2 {
+		t.Errorf("Expected 2 fields in second value set, got %d", len(ast.Values[1]))
+	}
+}
+
+func TestNextRow_WrongOperation(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+	table := instance.T("users")
+
+	builder := astql.Select(table).NextRow()
+
+	_, err := builder.Build()
+	if err == nil {
+		t.Fatal("Expected error when using NextRow() with SELECT")
+	}
+}
+
+func TestValue_SingleRow(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+	table := instance.T("users")
+
+	builder := astql.Insert(table).
+		Value(instance.F("username"), instance.P("username"))
+
+	ast, err := builder.Build()
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if len(ast.Values) != 1 {
+		t.Errorf("Expected 1 value set, got %d", len(ast.Values))
+	}
+	if len(ast.Values[0]) != 1 {
+		t.Errorf("Expected 1 field in value set, got %d", len(ast.Values[0]))
 	}
 }
 
