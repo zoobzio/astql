@@ -1,24 +1,56 @@
-package postgres
+package astql
 
 import (
 	"fmt"
 	"sort"
 	"strings"
 
-	"github.com/zoobzio/astql"
 	"github.com/zoobzio/astql/internal/types"
 )
 
-// Provider renders PostgreSQL AST to SQL with named parameters.
-type Provider struct{}
-
-// NewProvider creates a new PostgreSQL provider.
-func NewProvider() *Provider {
-	return &Provider{}
+// renderContext tracks rendering state for parameter namespacing and depth limiting.
+type renderContext struct {
+	usedParams    map[string]bool
+	paramCallback func(types.Param) string
+	paramPrefix   string
+	depth         int
 }
 
-// Render converts a PostgreSQL AST to a QueryResult with SQL, parameters, and metadata.
-func (p *Provider) Render(ast *AST) (*astql.QueryResult, error) {
+// newRenderContext creates a new render context.
+func newRenderContext(paramCallback func(types.Param) string) *renderContext {
+	return &renderContext{
+		depth:         0,
+		paramPrefix:   "",
+		usedParams:    make(map[string]bool),
+		paramCallback: paramCallback,
+	}
+}
+
+// withSubquery creates a child context for rendering a subquery.
+func (ctx *renderContext) withSubquery() (*renderContext, error) {
+	if ctx.depth >= types.MaxSubqueryDepth {
+		return nil, fmt.Errorf("maximum subquery depth (%d) exceeded", types.MaxSubqueryDepth)
+	}
+
+	return &renderContext{
+		depth:         ctx.depth + 1,
+		paramPrefix:   fmt.Sprintf("sq%d_", ctx.depth+1),
+		usedParams:    ctx.usedParams, // Share the same map
+		paramCallback: ctx.paramCallback,
+	}, nil
+}
+
+// addParam adds a parameter with proper namespacing.
+func (ctx *renderContext) addParam(param types.Param) string {
+	// Apply prefix for subqueries
+	if ctx.paramPrefix != "" {
+		param = types.Param{Name: ctx.paramPrefix + param.Name}
+	}
+	return ctx.paramCallback(param)
+}
+
+// Render converts an AST to a QueryResult with SQL, parameters, and metadata.
+func Render(ast *types.AST) (*QueryResult, error) {
 	if err := ast.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid AST: %w", err)
 	}
@@ -47,36 +79,36 @@ func (p *Provider) Render(ast *AST) (*astql.QueryResult, error) {
 	// Render based on operation
 	switch ast.Operation {
 	case types.OpSelect:
-		if err := p.renderSelectWithContext(ast, &sql, ctx); err != nil {
+		if err := renderSelect(ast, &sql, ctx); err != nil {
 			return nil, err
 		}
 	case types.OpInsert:
-		if err := p.renderInsert(ast, &sql, addParam); err != nil {
+		if err := renderInsert(ast, &sql, addParam); err != nil {
 			return nil, err
 		}
 	case types.OpUpdate:
-		if err := p.renderUpdate(ast, &sql, addParam); err != nil {
+		if err := renderUpdate(ast, &sql, addParam); err != nil {
 			return nil, err
 		}
 	case types.OpDelete:
-		if err := p.renderDelete(ast, &sql, addParam); err != nil {
+		if err := renderDelete(ast, &sql, addParam); err != nil {
 			return nil, err
 		}
 	case types.OpCount:
-		if err := p.renderCount(ast, &sql, addParam); err != nil {
+		if err := renderCount(ast, &sql, addParam); err != nil {
 			return nil, err
 		}
 	default:
 		return nil, fmt.Errorf("unsupported operation: %s", ast.Operation)
 	}
 
-	return &astql.QueryResult{
+	return &QueryResult{
 		SQL:            sql.String(),
 		RequiredParams: params,
 	}, nil
 }
 
-func (p *Provider) renderSelectWithContext(ast *AST, sql *strings.Builder, ctx *renderContext) error {
+func renderSelect(ast *types.AST, sql *strings.Builder, ctx *renderContext) error {
 	sql.WriteString("SELECT ")
 
 	if ast.Distinct {
@@ -91,12 +123,12 @@ func (p *Provider) renderSelectWithContext(ast *AST, sql *strings.Builder, ctx *
 
 		// Regular fields
 		for _, field := range ast.Fields {
-			selections = append(selections, p.renderField(field))
+			selections = append(selections, renderField(field))
 		}
 
 		// Field expressions (aggregates, CASE, etc)
 		for _, expr := range ast.FieldExpressions {
-			exprStr, err := p.renderFieldExpressionWithContext(expr, ctx)
+			exprStr, err := renderFieldExpression(expr, ctx)
 			if err != nil {
 				return err
 			}
@@ -107,24 +139,27 @@ func (p *Provider) renderSelectWithContext(ast *AST, sql *strings.Builder, ctx *
 	}
 
 	sql.WriteString(" FROM ")
-	sql.WriteString(p.renderTable(ast.Target))
+	sql.WriteString(renderTable(ast.Target))
 
 	// Render JOINs
 	for _, join := range ast.Joins {
 		sql.WriteString(" ")
 		sql.WriteString(string(join.Type))
 		sql.WriteString(" ")
-		sql.WriteString(p.renderTable(join.Table))
-		sql.WriteString(" ON ")
-		if err := p.renderConditionWithContext(join.On, sql, ctx); err != nil {
-			return err
+		sql.WriteString(renderTable(join.Table))
+		// CROSS JOIN doesn't have ON clause
+		if join.Type != types.CrossJoin {
+			sql.WriteString(" ON ")
+			if err := renderCondition(join.On, sql, ctx); err != nil {
+				return err
+			}
 		}
 	}
 
 	// WHERE clause
 	if ast.WhereClause != nil {
 		sql.WriteString(" WHERE ")
-		if err := p.renderConditionWithContext(ast.WhereClause, sql, ctx); err != nil {
+		if err := renderCondition(ast.WhereClause, sql, ctx); err != nil {
 			return err
 		}
 	}
@@ -134,7 +169,7 @@ func (p *Provider) renderSelectWithContext(ast *AST, sql *strings.Builder, ctx *
 		sql.WriteString(" GROUP BY ")
 		var groupFields []string
 		for _, field := range ast.GroupBy {
-			groupFields = append(groupFields, p.renderField(field))
+			groupFields = append(groupFields, renderField(field))
 		}
 		sql.WriteString(strings.Join(groupFields, ", "))
 	}
@@ -144,7 +179,7 @@ func (p *Provider) renderSelectWithContext(ast *AST, sql *strings.Builder, ctx *
 		sql.WriteString(" HAVING ")
 		var havingConds []string
 		for _, cond := range ast.Having {
-			havingConds = append(havingConds, p.renderSimpleCondition(cond, ctx.addParam))
+			havingConds = append(havingConds, renderSimpleCondition(cond, ctx.addParam))
 		}
 		sql.WriteString(strings.Join(havingConds, " AND "))
 	}
@@ -154,7 +189,7 @@ func (p *Provider) renderSelectWithContext(ast *AST, sql *strings.Builder, ctx *
 		sql.WriteString(" ORDER BY ")
 		var orderParts []string
 		for _, order := range ast.Ordering {
-			orderParts = append(orderParts, fmt.Sprintf("%s %s", p.renderField(order.Field), order.Direction))
+			orderParts = append(orderParts, fmt.Sprintf("%s %s", renderField(order.Field), order.Direction))
 		}
 		sql.WriteString(strings.Join(orderParts, ", "))
 	}
@@ -172,9 +207,9 @@ func (p *Provider) renderSelectWithContext(ast *AST, sql *strings.Builder, ctx *
 	return nil
 }
 
-func (p *Provider) renderInsert(ast *AST, sql *strings.Builder, addParam func(types.Param) string) error {
+func renderInsert(ast *types.AST, sql *strings.Builder, addParam func(types.Param) string) error {
 	sql.WriteString("INSERT INTO ")
-	sql.WriteString(p.renderTable(ast.Target))
+	sql.WriteString(renderTable(ast.Target))
 
 	if len(ast.Values) == 0 {
 		return fmt.Errorf("INSERT requires at least one value set")
@@ -223,9 +258,9 @@ func (p *Provider) renderInsert(ast *AST, sql *strings.Builder, addParam func(ty
 		sql.WriteString(") ")
 
 		switch ast.OnConflict.Action {
-		case DoNothing:
+		case types.DoNothing:
 			sql.WriteString("DO NOTHING")
-		case DoUpdate:
+		case types.DoUpdate:
 			sql.WriteString("DO UPDATE SET ")
 
 			// Collect fields for sorting
@@ -254,7 +289,7 @@ func (p *Provider) renderInsert(ast *AST, sql *strings.Builder, addParam func(ty
 		sql.WriteString(" RETURNING ")
 		var fields []string
 		for _, field := range ast.Returning {
-			fields = append(fields, p.renderField(field))
+			fields = append(fields, renderField(field))
 		}
 		sql.WriteString(strings.Join(fields, ", "))
 	}
@@ -262,9 +297,9 @@ func (p *Provider) renderInsert(ast *AST, sql *strings.Builder, addParam func(ty
 	return nil
 }
 
-func (p *Provider) renderUpdate(ast *AST, sql *strings.Builder, addParam func(types.Param) string) error {
+func renderUpdate(ast *types.AST, sql *strings.Builder, addParam func(types.Param) string) error {
 	sql.WriteString("UPDATE ")
-	sql.WriteString(p.renderTable(ast.Target))
+	sql.WriteString(renderTable(ast.Target))
 	sql.WriteString(" SET ")
 
 	// Render updates
@@ -291,7 +326,7 @@ func (p *Provider) renderUpdate(ast *AST, sql *strings.Builder, addParam func(ty
 	if ast.WhereClause != nil {
 		sql.WriteString(" WHERE ")
 		ctx := newRenderContext(addParam)
-		if err := p.renderConditionWithContext(ast.WhereClause, sql, ctx); err != nil {
+		if err := renderCondition(ast.WhereClause, sql, ctx); err != nil {
 			return err
 		}
 	}
@@ -301,7 +336,7 @@ func (p *Provider) renderUpdate(ast *AST, sql *strings.Builder, addParam func(ty
 		sql.WriteString(" RETURNING ")
 		var fields []string
 		for _, field := range ast.Returning {
-			fields = append(fields, p.renderField(field))
+			fields = append(fields, renderField(field))
 		}
 		sql.WriteString(strings.Join(fields, ", "))
 	}
@@ -309,15 +344,15 @@ func (p *Provider) renderUpdate(ast *AST, sql *strings.Builder, addParam func(ty
 	return nil
 }
 
-func (p *Provider) renderDelete(ast *AST, sql *strings.Builder, addParam func(types.Param) string) error {
+func renderDelete(ast *types.AST, sql *strings.Builder, addParam func(types.Param) string) error {
 	sql.WriteString("DELETE FROM ")
-	sql.WriteString(p.renderTable(ast.Target))
+	sql.WriteString(renderTable(ast.Target))
 
 	// WHERE clause
 	if ast.WhereClause != nil {
 		sql.WriteString(" WHERE ")
 		ctx := newRenderContext(addParam)
-		if err := p.renderConditionWithContext(ast.WhereClause, sql, ctx); err != nil {
+		if err := renderCondition(ast.WhereClause, sql, ctx); err != nil {
 			return err
 		}
 	}
@@ -327,7 +362,7 @@ func (p *Provider) renderDelete(ast *AST, sql *strings.Builder, addParam func(ty
 		sql.WriteString(" RETURNING ")
 		var fields []string
 		for _, field := range ast.Returning {
-			fields = append(fields, p.renderField(field))
+			fields = append(fields, renderField(field))
 		}
 		sql.WriteString(strings.Join(fields, ", "))
 	}
@@ -335,20 +370,23 @@ func (p *Provider) renderDelete(ast *AST, sql *strings.Builder, addParam func(ty
 	return nil
 }
 
-func (p *Provider) renderCount(ast *AST, sql *strings.Builder, addParam func(types.Param) string) error {
+func renderCount(ast *types.AST, sql *strings.Builder, addParam func(types.Param) string) error {
 	sql.WriteString("SELECT COUNT(*) FROM ")
-	sql.WriteString(p.renderTable(ast.Target))
+	sql.WriteString(renderTable(ast.Target))
 
 	// Render JOINs (COUNT can have JOINs)
 	for _, join := range ast.Joins {
 		sql.WriteString(" ")
 		sql.WriteString(string(join.Type))
 		sql.WriteString(" ")
-		sql.WriteString(p.renderTable(join.Table))
-		sql.WriteString(" ON ")
-		ctx := newRenderContext(addParam)
-		if err := p.renderConditionWithContext(join.On, sql, ctx); err != nil {
-			return err
+		sql.WriteString(renderTable(join.Table))
+		// CROSS JOIN doesn't have ON clause
+		if join.Type != types.CrossJoin {
+			sql.WriteString(" ON ")
+			ctx := newRenderContext(addParam)
+			if err := renderCondition(join.On, sql, ctx); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -356,7 +394,7 @@ func (p *Provider) renderCount(ast *AST, sql *strings.Builder, addParam func(typ
 	if ast.WhereClause != nil {
 		sql.WriteString(" WHERE ")
 		ctx := newRenderContext(addParam)
-		if err := p.renderConditionWithContext(ast.WhereClause, sql, ctx); err != nil {
+		if err := renderCondition(ast.WhereClause, sql, ctx); err != nil {
 			return err
 		}
 	}
@@ -372,7 +410,7 @@ func quoteIdentifier(name string) string {
 	return `"` + escaped + `"`
 }
 
-func (*Provider) renderTable(table types.Table) string {
+func renderTable(table types.Table) string {
 	quotedName := quoteIdentifier(table.Name)
 	if table.Alias != "" {
 		// Aliases don't need quoting since they're restricted to single lowercase letters
@@ -381,7 +419,7 @@ func (*Provider) renderTable(table types.Table) string {
 	return quotedName
 }
 
-func (*Provider) renderField(field types.Field) string {
+func renderField(field types.Field) string {
 	quotedName := quoteIdentifier(field.Name)
 	if field.Table != "" {
 		// Table aliases don't need quoting (single lowercase letter)
@@ -390,74 +428,74 @@ func (*Provider) renderField(field types.Field) string {
 	return quotedName
 }
 
-func (p *Provider) renderAggregateExpression(aggregate AggregateFunc, field types.Field) string {
+func renderAggregateExpression(aggregate types.AggregateFunc, field types.Field) string {
 	switch aggregate {
-	case AggCountField:
-		return fmt.Sprintf("COUNT(%s)", p.renderField(field))
-	case AggCountDistinct:
-		return fmt.Sprintf("COUNT(DISTINCT %s)", p.renderField(field))
-	case AggSum:
-		return fmt.Sprintf("SUM(%s)", p.renderField(field))
-	case AggAvg:
-		return fmt.Sprintf("AVG(%s)", p.renderField(field))
-	case AggMin:
-		return fmt.Sprintf("MIN(%s)", p.renderField(field))
-	case AggMax:
-		return fmt.Sprintf("MAX(%s)", p.renderField(field))
+	case types.AggCountField:
+		return fmt.Sprintf("COUNT(%s)", renderField(field))
+	case types.AggCountDistinct:
+		return fmt.Sprintf("COUNT(DISTINCT %s)", renderField(field))
+	case types.AggSum:
+		return fmt.Sprintf("SUM(%s)", renderField(field))
+	case types.AggAvg:
+		return fmt.Sprintf("AVG(%s)", renderField(field))
+	case types.AggMin:
+		return fmt.Sprintf("MIN(%s)", renderField(field))
+	case types.AggMax:
+		return fmt.Sprintf("MAX(%s)", renderField(field))
 	default:
-		return p.renderField(field) // Fallback
+		return renderField(field) // Fallback
 	}
 }
 
-func (p *Provider) renderFieldExpressionWithContext(expr FieldExpression, ctx *renderContext) (string, error) {
+func renderFieldExpression(expr types.FieldExpression, ctx *renderContext) (string, error) {
 	var result string
 
 	switch {
 	case expr.Case != nil:
 		// Render CASE expression
-		caseStr, err := p.renderCaseExpression(*expr.Case, ctx)
+		caseStr, err := renderCaseExpression(*expr.Case, ctx)
 		if err != nil {
 			return "", err
 		}
 		result = caseStr
 	case expr.Coalesce != nil:
 		// Render COALESCE expression
-		coalesceStr, err := p.renderCoalesceExpression(*expr.Coalesce, ctx)
+		coalesceStr, err := renderCoalesceExpression(*expr.Coalesce, ctx)
 		if err != nil {
 			return "", err
 		}
 		result = coalesceStr
 	case expr.NullIf != nil:
 		// Render NULLIF expression
-		nullifStr, err := p.renderNullIfExpression(*expr.NullIf, ctx)
+		nullifStr, err := renderNullIfExpression(*expr.NullIf, ctx)
 		if err != nil {
 			return "", err
 		}
 		result = nullifStr
 	case expr.Math != nil:
 		// Render math expression
-		mathStr, err := p.renderMathExpression(*expr.Math, ctx)
+		mathStr, err := renderMathExpression(*expr.Math, ctx)
 		if err != nil {
 			return "", err
 		}
 		result = mathStr
 	case expr.Aggregate != "":
-		result = p.renderAggregateExpression(expr.Aggregate, expr.Field)
+		result = renderAggregateExpression(expr.Aggregate, expr.Field)
 	default:
-		result = p.renderField(expr.Field)
+		result = renderField(expr.Field)
 	}
 
 	if expr.Alias != "" {
-		result += " AS " + expr.Alias
+		result += " AS " + quoteIdentifier(expr.Alias)
 	}
 
 	return result, nil
 }
 
-func (p *Provider) renderConditionWithContext(cond types.ConditionItem, sql *strings.Builder, ctx *renderContext) error {
+func renderCondition(cond types.ConditionItem, sql *strings.Builder, ctx *renderContext) error {
 	switch c := cond.(type) {
 	case types.Condition:
-		sql.WriteString(p.renderSimpleCondition(c, ctx.addParam))
+		sql.WriteString(renderSimpleCondition(c, ctx.addParam))
 	case types.ConditionGroup:
 		// Skip empty condition groups
 		if len(c.Conditions) == 0 {
@@ -468,18 +506,18 @@ func (p *Provider) renderConditionWithContext(cond types.ConditionItem, sql *str
 			if i > 0 {
 				fmt.Fprintf(sql, " %s ", c.Logic)
 			}
-			if err := p.renderConditionWithContext(subCond, sql, ctx); err != nil {
+			if err := renderCondition(subCond, sql, ctx); err != nil {
 				return err
 			}
 		}
 		sql.WriteString(")")
-	case FieldComparison:
+	case types.FieldComparison:
 		fmt.Fprintf(sql, "%s %s %s",
-			p.renderField(c.LeftField),
-			p.renderOperator(c.Operator),
-			p.renderField(c.RightField))
-	case SubqueryCondition:
-		if err := p.renderSubqueryCondition(c, sql, ctx); err != nil {
+			renderField(c.LeftField),
+			renderOperator(c.Operator),
+			renderField(c.RightField))
+	case types.SubqueryCondition:
+		if err := renderSubqueryCondition(c, sql, ctx); err != nil {
 			return err
 		}
 	default:
@@ -488,9 +526,9 @@ func (p *Provider) renderConditionWithContext(cond types.ConditionItem, sql *str
 	return nil
 }
 
-func (p *Provider) renderSimpleCondition(cond types.Condition, addParam func(types.Param) string) string {
-	field := p.renderField(cond.Field)
-	op := p.renderOperator(cond.Operator)
+func renderSimpleCondition(cond types.Condition, addParam func(types.Param) string) string {
+	field := renderField(cond.Field)
+	op := renderOperator(cond.Operator)
 
 	switch cond.Operator {
 	case types.IsNull:
@@ -502,7 +540,7 @@ func (p *Provider) renderSimpleCondition(cond types.Condition, addParam func(typ
 	}
 }
 
-func (p *Provider) renderSubqueryCondition(cond SubqueryCondition, sql *strings.Builder, ctx *renderContext) error {
+func renderSubqueryCondition(cond types.SubqueryCondition, sql *strings.Builder, ctx *renderContext) error {
 	switch cond.Operator {
 	case types.EXISTS, types.NotExists:
 		// EXISTS/NOT EXISTS don't need a field
@@ -513,7 +551,7 @@ func (p *Provider) renderSubqueryCondition(cond SubqueryCondition, sql *strings.
 		if cond.Field == nil {
 			return fmt.Errorf("operator %s requires a field", cond.Operator)
 		}
-		sql.WriteString(p.renderField(*cond.Field))
+		sql.WriteString(renderField(*cond.Field))
 		sql.WriteString(" ")
 		sql.WriteString(string(cond.Operator))
 		sql.WriteString(" ")
@@ -521,7 +559,7 @@ func (p *Provider) renderSubqueryCondition(cond SubqueryCondition, sql *strings.
 
 	// Render the subquery
 	sql.WriteString("(")
-	if err := p.renderSubquery(cond.Subquery, sql, ctx); err != nil {
+	if err := renderSubquery(cond.Subquery, sql, ctx); err != nil {
 		return err
 	}
 	sql.WriteString(")")
@@ -529,56 +567,25 @@ func (p *Provider) renderSubqueryCondition(cond SubqueryCondition, sql *strings.
 	return nil
 }
 
-func (p *Provider) renderSubquery(subquery Subquery, sql *strings.Builder, ctx *renderContext) error {
+func renderSubquery(subquery types.Subquery, sql *strings.Builder, ctx *renderContext) error {
 	// Create a new context for the subquery
 	subCtx, err := ctx.withSubquery()
 	if err != nil {
 		return err
 	}
 
-	switch ast := subquery.AST.(type) {
-	case *types.QueryAST:
-		// Render basic AST as SELECT
-		sql.WriteString("SELECT ")
-		if len(ast.Fields) == 0 {
-			sql.WriteString("*")
-		} else {
-			var fields []string
-			for _, field := range ast.Fields {
-				fields = append(fields, p.renderField(field))
-			}
-			sql.WriteString(strings.Join(fields, ", "))
-		}
-		sql.WriteString(" FROM ")
-		sql.WriteString(p.renderTable(ast.Target))
-
-		if ast.WhereClause != nil {
-			sql.WriteString(" WHERE ")
-			if err := p.renderConditionWithContext(ast.WhereClause, sql, subCtx); err != nil {
-				return err
-			}
-		}
-
-	case *AST:
-		// Render full PostgreSQL AST
-		if err := p.renderSelectWithContext(ast, sql, subCtx); err != nil {
-			return err
-		}
-
-	default:
-		return fmt.Errorf("unsupported subquery AST type: %T", ast)
-	}
-
-	return nil
+	ast := subquery.AST
+	// Render full query AST
+	return renderSelect(ast, sql, subCtx)
 }
 
-func (p *Provider) renderCaseExpression(expr CaseExpression, ctx *renderContext) (string, error) {
+func renderCaseExpression(expr types.CaseExpression, ctx *renderContext) (string, error) {
 	var sql strings.Builder
 	sql.WriteString("CASE")
 
 	for _, when := range expr.WhenClauses {
 		sql.WriteString(" WHEN ")
-		if err := p.renderConditionWithContext(when.Condition, &sql, ctx); err != nil {
+		if err := renderCondition(when.Condition, &sql, ctx); err != nil {
 			return "", err
 		}
 		sql.WriteString(" THEN ")
@@ -594,7 +601,7 @@ func (p *Provider) renderCaseExpression(expr CaseExpression, ctx *renderContext)
 	return sql.String(), nil
 }
 
-func (*Provider) renderCoalesceExpression(expr CoalesceExpression, ctx *renderContext) (string, error) {
+func renderCoalesceExpression(expr types.CoalesceExpression, ctx *renderContext) (string, error) {
 	var sql strings.Builder
 	sql.WriteString("COALESCE(")
 
@@ -607,7 +614,7 @@ func (*Provider) renderCoalesceExpression(expr CoalesceExpression, ctx *renderCo
 	return sql.String(), nil
 }
 
-func (*Provider) renderNullIfExpression(expr NullIfExpression, ctx *renderContext) (string, error) {
+func renderNullIfExpression(expr types.NullIfExpression, ctx *renderContext) (string, error) {
 	var sql strings.Builder
 	sql.WriteString("NULLIF(")
 	sql.WriteString(ctx.addParam(expr.Value1))
@@ -617,33 +624,33 @@ func (*Provider) renderNullIfExpression(expr NullIfExpression, ctx *renderContex
 	return sql.String(), nil
 }
 
-func (p *Provider) renderMathExpression(expr MathExpression, ctx *renderContext) (string, error) {
+func renderMathExpression(expr types.MathExpression, ctx *renderContext) (string, error) {
 	var sql strings.Builder
 
 	switch expr.Function {
-	case MathRound:
+	case types.MathRound:
 		sql.WriteString("ROUND(")
-		sql.WriteString(p.renderField(expr.Field))
+		sql.WriteString(renderField(expr.Field))
 		if expr.Precision != nil {
 			sql.WriteString(", ")
 			sql.WriteString(ctx.addParam(*expr.Precision))
 		}
 		sql.WriteString(")")
-	case MathFloor:
+	case types.MathFloor:
 		sql.WriteString("FLOOR(")
-		sql.WriteString(p.renderField(expr.Field))
+		sql.WriteString(renderField(expr.Field))
 		sql.WriteString(")")
-	case MathCeil:
+	case types.MathCeil:
 		sql.WriteString("CEIL(")
-		sql.WriteString(p.renderField(expr.Field))
+		sql.WriteString(renderField(expr.Field))
 		sql.WriteString(")")
-	case MathAbs:
+	case types.MathAbs:
 		sql.WriteString("ABS(")
-		sql.WriteString(p.renderField(expr.Field))
+		sql.WriteString(renderField(expr.Field))
 		sql.WriteString(")")
-	case MathPower:
+	case types.MathPower:
 		sql.WriteString("POWER(")
-		sql.WriteString(p.renderField(expr.Field))
+		sql.WriteString(renderField(expr.Field))
 		if expr.Exponent != nil {
 			sql.WriteString(", ")
 			sql.WriteString(ctx.addParam(*expr.Exponent))
@@ -651,9 +658,9 @@ func (p *Provider) renderMathExpression(expr MathExpression, ctx *renderContext)
 			return "", fmt.Errorf("POWER requires an exponent parameter")
 		}
 		sql.WriteString(")")
-	case MathSqrt:
+	case types.MathSqrt:
 		sql.WriteString("SQRT(")
-		sql.WriteString(p.renderField(expr.Field))
+		sql.WriteString(renderField(expr.Field))
 		sql.WriteString(")")
 	default:
 		return "", fmt.Errorf("unsupported math function: %s", expr.Function)
@@ -662,7 +669,7 @@ func (p *Provider) renderMathExpression(expr MathExpression, ctx *renderContext)
 	return sql.String(), nil
 }
 
-func (*Provider) renderOperator(op types.Operator) string {
+func renderOperator(op types.Operator) string {
 	switch op {
 	case types.EQ:
 		return "="

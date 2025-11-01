@@ -5,32 +5,25 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/zoobzio/astql.svg)](https://pkg.go.dev/github.com/zoobzio/astql)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# ASTQL - Abstract Syntax Tree Query Language
+# ASTQL - Schema-Validated SQL Query Builder
 
-ASTQL is a secure, type-safe SQL query builder for Go that uses an Abstract Syntax Tree (AST) approach to prevent SQL injection attacks. It provides a fluent API for building complex SQL queries programmatically while maintaining strict validation and type safety.
+ASTQL is a **SQL injection-resistant** PostgreSQL query builder for Go that validates all queries against a DBML schema before rendering. It uses an Abstract Syntax Tree (AST) approach to prevent SQL injection attacks through schema validation and parameterized queries.
 
 ## Key Features
 
-- **Security First**: Prevents SQL injection through strict validation and AST-based query construction
-- **Type Safety**: All query components are strongly typed with compile-time checks
-- **Provider Pattern**: Extensible architecture supporting multiple database engines
-- **Schema Builder**: YAML/JSON to SQL query generation for zero-deployment environments
-- **Field Registration**: Automatic field discovery and validation via Sentinel integration
-- **Rich Query Support**: Complex queries including JOINs, subqueries, CTEs, and more
-- **Error Handling**: Try variants for graceful error handling instead of panics
-
-## Core Principles
-
-1. **No String Literals** - All table names, field names, and parameters must go through validated functions
-2. **Validation at Creation** - Invalid fields/tables cause immediate panics, not runtime SQL errors
-3. **Parameters Only** - User values can only be passed as parameters, never as raw SQL
-4. **Clean Separation** - AST structure is separate from SQL rendering (providers)
-5. **Exact Naming** - Table names must exactly match struct names (e.g., `User` not `users`)
+- ✅ **SQL Injection Prevention**: Schema validation blocks injection attempts at query construction time
+- ✅ **DBML Schema Integration**: Validates tables and fields against your DBML schema
+- ✅ **PostgreSQL Focused**: Optimized for PostgreSQL with full feature support
+- ✅ **Type Safety**: Instance-based API prevents direct struct creation
+- ✅ **Rich Query Support**: JOINs, subqueries, aggregates, CASE expressions, and more
+- ✅ **Parameterized Queries**: All user values use named parameters (`:param` style)
+- ✅ **Comprehensive Testing**: 85%+ test coverage with security-focused tests
 
 ## Installation
 
 ```bash
 go get github.com/zoobzio/astql
+go get github.com/zoobzio/dbml  # For schema definitions
 ```
 
 ## Quick Start
@@ -41,246 +34,301 @@ package main
 import (
     "fmt"
     "github.com/zoobzio/astql"
-    "github.com/zoobzio/astql/providers/postgres"
+    "github.com/zoobzio/dbml"
 )
 
 func main() {
-    // Define tables and fields - must match struct names exactly
-    users := astql.T("User", "u")
-    posts := astql.T("Post", "p")
-    
-    // Build a complex query
-    query := postgres.Select(users).
-        Fields(
-            astql.F("id"),
-            astql.F("username"),
-            astql.F("email"),
-        ).
-        InnerJoin(posts, astql.C(astql.F("id").WithTable("u"), astql.EQ, astql.F("user_id").WithTable("p"))).
-        Where(astql.And(
-            astql.C(astql.F("active"), astql.EQ, astql.P("active")),
-            astql.C(astql.F("created_at"), astql.GE, astql.P("since")),
-        )).
-        OrderBy(astql.F("created_at"), astql.DESC).
-        Limit(10)
-    
-    // Build the query
-    ast, err := query.Build()
+    // Define your schema using DBML
+    project := dbml.NewProject("myapp")
+
+    users := dbml.NewTable("users")
+    users.AddColumn(dbml.NewColumn("id", "bigint"))
+    users.AddColumn(dbml.NewColumn("username", "varchar"))
+    users.AddColumn(dbml.NewColumn("email", "varchar"))
+    users.AddColumn(dbml.NewColumn("active", "boolean"))
+    project.AddTable(users)
+
+    // Create ASTQL instance from schema
+    instance, err := astql.NewFromDBML(project)
     if err != nil {
         panic(err)
     }
-    
-    // Generate SQL
-    sql, params := postgres.NewProvider().ToSQL(ast)
-    fmt.Println(sql)
-    // Output: SELECT u.id, u.username, u.email FROM User AS u INNER JOIN Post AS p ON u.id = p.user_id WHERE (u.active = $1 AND u.created_at >= $2) ORDER BY u.created_at DESC LIMIT 10
+
+    // Build a query - all tables/fields validated against schema
+    result, err := astql.Select(instance.T("users")).
+        Fields(instance.F("username"), instance.F("email")).
+        Where(instance.C(instance.F("active"), "=", instance.P("is_active"))).
+        OrderBy(instance.F("username"), "ASC").
+        Limit(10).
+        Render()
+
+    if err != nil {
+        panic(err)
+    }
+
+    fmt.Println(result.SQL)
+    // Output: SELECT "username", "email" FROM "users" WHERE "active" = :is_active ORDER BY "username" ASC LIMIT 10
+
+    fmt.Println(result.RequiredParams)
+    // Output: [is_active]
 }
 ```
 
-## Basic Usage Examples
+## Core Concepts
+
+### Instance-Based Validation
+
+ASTQL uses **instance-based validation** - each instance is bound to a specific DBML schema:
 
 ```go
-// SELECT specific fields
-query := postgres.Select(astql.T("User")).
+// All types created through the instance
+instance.T("users")       // Table - validates against schema
+instance.F("email")       // Field - validates against schema
+instance.P("user_email")  // Parameter - validates identifier
+instance.C(field, op, param)  // Condition - validates field exists
+
+// This WON'T compile (types are internal):
+// types.Table{Name: "users"}  // ❌ Cannot access internal package
+```
+
+### Security by Design
+
+**Schema Validation Prevents Injection:**
+```go
+// Valid query - table/field exist in schema
+instance.T("users")           // ✅ Validated
+instance.F("email")           // ✅ Validated
+
+// Injection attempts caught at construction
+instance.T("users; DROP TABLE users--")  // ❌ Panics: table not found in schema
+instance.F("id OR 1=1")                  // ❌ Panics: field not found in schema
+instance.P("id; DELETE FROM users")      // ❌ Panics: invalid parameter name
+```
+
+**Defense in Depth:**
+1. Schema validation (tables/fields must exist)
+2. Identifier validation (alphanumeric + underscore only)
+3. SQL keyword blocking (`;`, `--`, `'`, `OR`, `AND`, etc.)
+4. Quoted identifiers (prevents injection via special chars)
+5. Parameterized queries (values never interpolated)
+
+## Query Examples
+
+### SELECT with WHERE and JOIN
+
+```go
+result, _ := astql.Select(instance.T("users", "u")).
     Fields(
-        astql.F("id"),
-        astql.F("name"),
-        astql.F("email"),
+        instance.WithTable(instance.F("username"), "u"),
+        instance.WithTable(instance.F("title"), "p"),
     ).
-    Where(astql.C(astql.F("age"), astql.GT, astql.P("minAge"))).
-    OrderBy(astql.F("name"), astql.ASC).
-    Limit(10)
+    InnerJoin(
+        instance.T("posts", "p"),
+        astql.CF(
+            instance.WithTable(instance.F("id"), "u"),
+            "=",
+            instance.WithTable(instance.F("user_id"), "p"),
+        ),
+    ).
+    Where(instance.And(
+        instance.C(instance.WithTable(instance.F("active"), "u"), "=", instance.P("is_active")),
+        instance.C(instance.WithTable(instance.F("published"), "p"), "=", instance.P("is_published")),
+    )).
+    Render()
 
-// INSERT with RETURNING
-query := postgres.Insert(astql.T("User")).
+// SELECT u."username", p."title" FROM "users" u
+// INNER JOIN "posts" p ON u."id" = p."user_id"
+// WHERE (u."active" = :is_active AND p."published" = :is_published)
+```
+
+### INSERT with ON CONFLICT
+
+```go
+result, _ := astql.Insert(instance.T("users")).
     Values(map[types.Field]types.Param{
-        astql.F("name"):  astql.P("userName"),
-        astql.F("email"): astql.P("userEmail"),
-        astql.F("age"):   astql.P("userAge"),
+        instance.F("username"): instance.P("username"),
+        instance.F("email"):    instance.P("email"),
     }).
-    Returning(astql.F("id"), astql.F("created_at"))
+    OnConflict(instance.F("email")).
+    DoUpdate().
+    Set(instance.F("username"), instance.P("username")).
+    Build().
+    Returning(instance.F("id")).
+    Render()
 
-// UPDATE with complex WHERE
-query := postgres.Update(astql.T("User")).
-    Set(astql.F("name"), astql.P("newName")).
-    Set(astql.F("updated_at"), astql.P("now")).
-    Where(astql.And(
-        astql.C(astql.F("id"), astql.EQ, astql.P("userId")),
-        astql.C(astql.F("active"), astql.EQ, astql.P("true")),
-    ))
-
-// DELETE with JOIN
-query := postgres.Delete(astql.T("posts", "p")).
-    Using(astql.T("users", "u")).
-    Where(astql.And(
-        astql.C(astql.F("user_id").WithTable("p"), astql.EQ, astql.F("id").WithTable("u")),
-        astql.C(astql.F("banned").WithTable("u"), astql.EQ, astql.P("true")),
-    ))
+// INSERT INTO "users" ("email", "username") VALUES (:email, :username)
+// ON CONFLICT ("email") DO UPDATE SET "username" = :username
+// RETURNING "id"
 ```
 
-## Schema Builder
-
-The schema builder allows you to define queries using YAML or JSON, perfect for LLM-generated queries:
-
-```yaml
-operation: SELECT
-table: users
-alias: u
-fields:
-  - id
-  - username
-  - email
-where:
-  logic: AND
-  conditions:
-    - field: active
-      operator: "="
-      param: active
-    - field: role
-      operator: IN
-      param: roles
-order_by:
-  - field: created_at
-    direction: DESC
-limit: 20
-```
+### UPDATE with RETURNING
 
 ```go
-// Parse and build query from schema
-var schema postgres.QuerySchema
-if err := yaml.Unmarshal(yamlData, &schema); err != nil {
-    return err
-}
+result, _ := astql.Update(instance.T("users")).
+    Set(instance.F("active"), instance.P("new_status")).
+    Where(instance.C(instance.F("id"), "=", instance.P("user_id"))).
+    Returning(instance.F("updated_at")).
+    Render()
 
-ast, err := postgres.BuildFromSchema(&schema)
-if err != nil {
-    return err
-}
-
-sql, params := postgres.NewProvider().ToSQL(ast)
+// UPDATE "users" SET "active" = :new_status
+// WHERE "id" = :user_id
+// RETURNING "updated_at"
 ```
 
-## Security Features
-
-### Internal Types Package
-All core types are defined in an internal package, preventing external users from creating struct literals directly:
+### Aggregates with GROUP BY
 
 ```go
-// This will NOT compile for external users:
-// field := types.Field{Name: "users"} // ❌ Cannot access internal package
+result, _ := astql.Select(instance.T("orders")).
+    Fields(instance.F("user_id")).
+    SelectExpr(astql.As(astql.Sum(instance.F("total")), "total_spent")).
+    SelectExpr(astql.As(astql.CountField(instance.F("id")), "order_count")).
+    GroupBy(instance.F("user_id")).
+    Having(
+        instance.C(instance.F("total"), ">", instance.P("min_total")),
+    ).
+    Render()
 
-// Must use validated constructors:
-field := astql.F("username") // ✅ Validated and safe
+// SELECT "user_id", SUM("total") AS "total_spent", COUNT("id") AS "order_count"
+// FROM "orders"
+// GROUP BY "user_id"
+// HAVING "total" > :min_total
 ```
-
-### Try Variants
-For handling untrusted input (like schemas from LLMs), use Try variants that return errors instead of panicking:
-
-```go
-// Regular variant - panics on invalid input
-field := astql.F("invalid-field-name!") // Panics!
-
-// Try variant - returns error
-field, err := astql.TryF("invalid-field-name!")
-if err != nil {
-    // Handle error gracefully
-    return fmt.Errorf("invalid field: %w", err)
-}
-```
-
-### Comprehensive Validation
-- Table names must be alphanumeric with underscores
-- Field names follow strict naming conventions
-- Parameter names are validated against injection patterns
-- All operators and functions are allowlisted
-
-## Provider Support
-
-Currently supported:
-- **PostgreSQL**: Full support including ON CONFLICT, RETURNING, and advanced SQL features
-- **SQLite**: Support for core features with OR IGNORE/REPLACE, RETURNING (3.35.0+), and adapted SQL features
-
-Coming soon:
-- MySQL/MariaDB
-- Microsoft SQL Server
-
-## Advanced Features
 
 ### Subqueries
-```go
-subquery := postgres.Select(astql.T("Order")).
-    Fields(astql.F("user_id")).
-    Where(astql.C(astql.F("total"), astql.GT, astql.P("min_total")))
 
-mainQuery := postgres.Select(astql.T("users")).
-    Fields(astql.F("*")).
-    Where(astql.CSub(astql.F("id"), astql.IN, subquery))
+```go
+// Nested subquery with automatic parameter namespacing
+subquery := astql.Sub(
+    astql.Select(instance.T("posts")).
+        Fields(instance.F("user_id")).
+        Where(instance.C(instance.F("published"), "=", instance.P("is_published"))),
+)
+
+result, _ := astql.Select(instance.T("users")).
+    Where(astql.CSub(instance.F("id"), types.IN, subquery)).
+    Render()
+
+// SELECT * FROM "users"
+// WHERE "id" IN (SELECT "user_id" FROM "posts" WHERE "published" = :sq1_is_published)
+// Parameters are automatically prefixed (sq1_, sq2_, sq3_) to prevent collisions
 ```
 
 ### CASE Expressions
-```go
-caseExpr := postgres.Case().
-    When(astql.C(astql.F("age"), astql.LT, astql.P("adult_age")), astql.P("minor")).
-    When(astql.C(astql.F("age"), astql.LT, astql.P("senior_age")), astql.P("adult")).
-    Else(astql.P("senior"))
 
-query := postgres.Select(users).SelectExpr(caseExpr.As("age_group"))
+```go
+caseExpr := astql.Case().
+    When(instance.C(instance.F("age"), "<", instance.P("young_age")), instance.P("young")).
+    When(instance.C(instance.F("age"), ">=", instance.P("old_age")), instance.P("old")).
+    Else(instance.P("middle")).
+    As("age_group").
+    Build()
+
+result, _ := astql.Select(instance.T("users")).
+    Fields(instance.F("username")).
+    SelectExpr(caseExpr).
+    Render()
+
+// SELECT "username",
+// CASE WHEN "age" < :young_age THEN :young
+//      WHEN "age" >= :old_age THEN :old
+//      ELSE :middle END AS "age_group"
+// FROM "users"
 ```
 
-## Integration with Sentinel
-
-ASTQL uses [Sentinel](https://github.com/zoobzio/sentinel) for struct metadata extraction and validation:
+### Math Functions
 
 ```go
-// Your model with db tags
-type User struct {
-    ID    int    `db:"id"`
-    Name  string `db:"name"`
-    Email string `db:"email"`
-    Age   int    `db:"age"`
-}
+result, _ := astql.Select(instance.T("products")).
+    SelectExpr(astql.As(astql.Round(instance.F("price"), instance.P("decimals")), "rounded_price")).
+    SelectExpr(astql.As(astql.Floor(instance.F("rating")), "floor_rating")).
+    SelectExpr(astql.As(astql.Power(instance.F("quantity"), instance.P("exponent")), "qty_squared")).
+    Render()
 
-// Register with Sentinel (usually in init or setup)
-admin := sentinel.NewAdmin()
-admin.Seal()
-sentinel.Inspect[User]()
-
-// Now these are valid:
-astql.T("User")   // ✓ Exact struct name
-astql.F("id")     // ✓
-astql.F("name")   // ✓
-astql.F("email")  // ✓
-
-// These will panic:
-astql.T("users")         // ✗ panic: table 'users' not found (must use "User")
-astql.F("invalid_field") // ✗ panic: invalid field
+// SELECT ROUND("price", :decimals) AS "rounded_price",
+//        FLOOR("rating") AS "floor_rating",
+//        POWER("quantity", :exponent) AS "qty_squared"
+// FROM "products"
 ```
 
-## Error Handling Philosophy
+## Supported Features
 
-ASTQL follows a **fail-fast** approach for query construction:
+### Query Types
+- SELECT (with DISTINCT)
+- INSERT (with ON CONFLICT, RETURNING)
+- UPDATE (with RETURNING)
+- DELETE (with RETURNING)
+- COUNT
 
-### Panics (Immediate Failures)
-These indicate programming errors that should be caught during development:
-- Invalid table names (not registered with Sentinel)
-- Invalid field names (not in struct)
-- Invalid parameter names (SQL keywords, special characters)
-- Invalid aliases (not single lowercase letter for tables)
+### JOINs
+- INNER JOIN
+- LEFT JOIN
+- RIGHT JOIN
+- CROSS JOIN
 
+### Expressions
+- Aggregates: SUM, AVG, MIN, MAX, COUNT, COUNT(DISTINCT)
+- CASE/WHEN/THEN/ELSE
+- COALESCE
+- NULLIF
+- Math: ROUND, FLOOR, CEIL, ABS, POWER, SQRT
+
+### Advanced Features
+- Subqueries (IN, NOT IN, EXISTS, NOT EXISTS)
+- Nested subqueries (up to 3 levels)
+- GROUP BY and HAVING
+- ORDER BY with ASC/DESC
+- LIMIT and OFFSET
+- Field comparisons (field-to-field conditions)
+- NULL checks (IS NULL, IS NOT NULL)
+
+## Security Features
+
+### What's Protected
+
+✅ **Table names** - Must exist in schema, always quoted
+✅ **Field names** - Must exist in schema, always quoted
+✅ **Parameter names** - Validated, no SQL keywords
+✅ **Parameter values** - Parameterized queries only
+✅ **Operators** - Enum-based, no user control
+✅ **Aliases** - Validated and quoted
+✅ **Table aliases** - Restricted to single letters (a-z)
+
+### SQL Injection Prevention
+
+The package prevents SQL injection through multiple layers:
+
+1. **Schema Validation**: All tables and fields must exist in your DBML schema
+2. **Identifier Validation**: Strict alphanumeric + underscore rules
+3. **SQL Keyword Blocking**: Rejects `;`, `--`, `'`, `"`, `OR`, `AND`, etc.
+4. **Quoted Identifiers**: PostgreSQL double-quote escaping
+5. **Parameterized Queries**: Named parameters (`:param`), never string interpolation
+
+Example of blocked injection attempts:
 ```go
-// These panic immediately:
-astql.T("nonexistent")  // panic: table not found
-astql.F("bad_field")    // panic: field not found
-astql.P("SELECT")       // panic: SQL keyword not allowed
+instance.T("users; DROP TABLE users--")  // ❌ Panics: table not in schema
+instance.F("id' OR '1'='1")              // ❌ Panics: field not in schema
+instance.P("id; DELETE FROM users")      // ❌ Panics: invalid identifier
+astql.As(expr, "x; DROP TABLE users")   // ❌ Panics: invalid alias
 ```
 
-### Try Variants (Graceful Errors)
-For dynamic query construction, use Try variants:
+## Error Handling
 
+ASTQL uses a **fail-fast** approach:
+
+### Panics (Development Errors)
+These indicate programming errors caught during query construction:
 ```go
-table, err := astql.TryT(userInput)  // Returns error instead of panic
-field, err := astql.TryF(fieldName)  // Safe for runtime validation
-param, err := astql.TryP(paramName)  // Validates parameter names
+instance.T("nonexistent")  // panic: table not found in schema
+instance.F("bad_field")    // panic: field not found in schema
+instance.P("invalid-name") // panic: invalid parameter name
+```
+
+### Try Variants (Runtime Validation)
+For dynamic input, use Try variants that return errors:
+```go
+table, err := instance.TryT(userInput)    // Returns error instead of panic
+field, err := instance.TryF(fieldName)    // Safe for runtime validation
+param, err := instance.TryP(paramName)    // Validates parameter names
 ```
 
 ## Testing
@@ -302,9 +350,48 @@ make lint
 make ci
 ```
 
+**Current Test Coverage: 85%+** with 128 passing tests including comprehensive SQL injection prevention tests.
+
+## Architecture
+
+```
+astql/
+├── instance.go          # DBML schema validation
+├── builder.go           # Query builder (SELECT, INSERT, etc.)
+├── expressions.go       # Expression helpers (SUM, CASE, etc.)
+├── render.go            # PostgreSQL SQL generation
+├── internal/types/      # Internal AST types (not accessible externally)
+│   ├── ast.go
+│   ├── field.go
+│   ├── table.go
+│   └── operator.go
+└── *_test.go            # Comprehensive test suite
+```
+
+## Comparison with Other Builders
+
+| Feature | ASTQL | GORM | sqlx | squirrel |
+|---------|-------|------|------|----------|
+| SQL Injection Prevention | ✅ Schema validation | ⚠️ Trust developer | ⚠️ Trust developer | ⚠️ Trust developer |
+| Schema Validation | ✅ DBML-based | ❌ Runtime only | ❌ None | ❌ None |
+| Type Safety | ✅ Instance-based | ⚠️ Reflection | ❌ String-based | ❌ String-based |
+| PostgreSQL Features | ✅ Full support | ✅ Full | ✅ Full | ✅ Full |
+| Subquery Support | ✅ With depth limits | ✅ Yes | ✅ Yes | ✅ Yes |
+| Learning Curve | Medium | High | Low | Low |
+
+## Roadmap
+
+- [ ] Add support for CTEs (WITH clauses)
+- [ ] Window functions (OVER, PARTITION BY)
+- [ ] Array operations (PostgreSQL arrays)
+- [ ] JSON/JSONB operations
+- [ ] Full-text search support
+- [ ] Query plan analysis helpers
+- [ ] Additional database support (MySQL, SQLite)
+
 ## Contributing
 
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details on how to get started.
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
 
 ### Security
 
@@ -313,3 +400,7 @@ For security vulnerabilities, please see our [Security Policy](SECURITY.md) for 
 ## License
 
 ASTQL is released under the [MIT License](LICENSE).
+
+---
+
+**Note**: This package is PostgreSQL-focused. While the architecture could support other databases, current development prioritizes PostgreSQL features and security.

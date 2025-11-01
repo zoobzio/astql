@@ -6,14 +6,31 @@ import (
 	"github.com/zoobzio/astql/internal/types"
 )
 
+// and creates an AND condition group (internal helper for builder).
+func and(conditions ...types.ConditionItem) types.ConditionGroup {
+	return types.ConditionGroup{
+		Logic:      types.AND,
+		Conditions: conditions,
+	}
+}
+
+// c creates a simple condition (internal helper for builder).
+func c(f types.Field, op types.Operator, p types.Param) types.Condition {
+	return types.Condition{
+		Field:    f,
+		Operator: op,
+		Value:    p,
+	}
+}
+
 // Builder provides a fluent API for constructing queries.
 type Builder struct {
-	ast *types.QueryAST
+	ast *types.AST
 	err error
 }
 
-// GetAST returns the internal AST (for use by provider packages).
-func (b *Builder) GetAST() *types.QueryAST {
+// GetAST returns the internal AST.
+func (b *Builder) GetAST() *types.AST {
 	return b.ast
 }
 
@@ -30,7 +47,7 @@ func (b *Builder) SetError(err error) {
 // Select creates a new SELECT query builder.
 func Select(t types.Table) *Builder {
 	return &Builder{
-		ast: &types.QueryAST{
+		ast: &types.AST{
 			Operation: types.OpSelect,
 			Target:    t,
 		},
@@ -40,7 +57,7 @@ func Select(t types.Table) *Builder {
 // Insert creates a new INSERT query builder.
 func Insert(t types.Table) *Builder {
 	return &Builder{
-		ast: &types.QueryAST{
+		ast: &types.AST{
 			Operation: types.OpInsert,
 			Target:    t,
 		},
@@ -50,7 +67,7 @@ func Insert(t types.Table) *Builder {
 // Update creates a new UPDATE query builder.
 func Update(t types.Table) *Builder {
 	return &Builder{
-		ast: &types.QueryAST{
+		ast: &types.AST{
 			Operation: types.OpUpdate,
 			Target:    t,
 			Updates:   make(map[types.Field]types.Param),
@@ -61,7 +78,7 @@ func Update(t types.Table) *Builder {
 // Delete creates a new DELETE query builder.
 func Delete(t types.Table) *Builder {
 	return &Builder{
-		ast: &types.QueryAST{
+		ast: &types.AST{
 			Operation: types.OpDelete,
 			Target:    t,
 		},
@@ -71,7 +88,7 @@ func Delete(t types.Table) *Builder {
 // Count creates a new COUNT query builder.
 func Count(t types.Table) *Builder {
 	return &Builder{
-		ast: &types.QueryAST{
+		ast: &types.AST{
 			Operation: types.OpCount,
 			Target:    t,
 		},
@@ -101,7 +118,7 @@ func (b *Builder) Where(condition types.ConditionItem) *Builder {
 		b.ast.WhereClause = condition
 	} else {
 		// If there's already a where clause, combine with AND
-		b.ast.WhereClause = And(b.ast.WhereClause, condition)
+		b.ast.WhereClause = and(b.ast.WhereClause, condition)
 	}
 
 	return b
@@ -109,7 +126,7 @@ func (b *Builder) Where(condition types.ConditionItem) *Builder {
 
 // WhereField is a convenience method for simple field conditions.
 func (b *Builder) WhereField(f types.Field, op types.Operator, p types.Param) *Builder {
-	return b.Where(C(f, op, p))
+	return b.Where(c(f, op, p))
 }
 
 // Set adds a field update for UPDATE queries.
@@ -178,7 +195,7 @@ func (b *Builder) Offset(offset int) *Builder {
 }
 
 // Build returns the constructed AST or an error.
-func (b *Builder) Build() (*types.QueryAST, error) {
+func (b *Builder) Build() (*types.AST, error) {
 	if b.err != nil {
 		return nil, b.err
 	}
@@ -192,10 +209,218 @@ func (b *Builder) Build() (*types.QueryAST, error) {
 }
 
 // MustBuild returns the AST or panics on error.
-func (b *Builder) MustBuild() *types.QueryAST {
+func (b *Builder) MustBuild() *types.AST {
 	ast, err := b.Build()
 	if err != nil {
 		panic(err)
 	}
 	return ast
+}
+
+// Render builds the AST and renders it to SQL.
+func (b *Builder) Render() (*QueryResult, error) {
+	ast, err := b.Build()
+	if err != nil {
+		return nil, err
+	}
+	return Render(ast)
+}
+
+// MustRender builds and renders the AST or panics on error.
+func (b *Builder) MustRender() *QueryResult {
+	result, err := b.Render()
+	if err != nil {
+		panic(err)
+	}
+	return result
+}
+
+// Distinct sets the DISTINCT flag for SELECT queries.
+func (b *Builder) Distinct() *Builder {
+	if b.err != nil {
+		return b
+	}
+	if b.ast.Operation != types.OpSelect {
+		b.err = fmt.Errorf("DISTINCT can only be used with SELECT queries")
+		return b
+	}
+	b.ast.Distinct = true
+	return b
+}
+
+// Join adds an INNER JOIN.
+func (b *Builder) Join(table types.Table, on types.ConditionItem) *Builder {
+	return b.addJoin(types.InnerJoin, table, on)
+}
+
+// InnerJoin adds an INNER JOIN.
+func (b *Builder) InnerJoin(table types.Table, on types.ConditionItem) *Builder {
+	return b.addJoin(types.InnerJoin, table, on)
+}
+
+// LeftJoin adds a LEFT JOIN.
+func (b *Builder) LeftJoin(table types.Table, on types.ConditionItem) *Builder {
+	return b.addJoin(types.LeftJoin, table, on)
+}
+
+// RightJoin adds a RIGHT JOIN.
+func (b *Builder) RightJoin(table types.Table, on types.ConditionItem) *Builder {
+	return b.addJoin(types.RightJoin, table, on)
+}
+
+// CrossJoin adds a CROSS JOIN (no ON clause needed).
+func (b *Builder) CrossJoin(table types.Table) *Builder {
+	return b.addJoin(types.CrossJoin, table, nil)
+}
+
+// addJoin is a helper to add joins.
+func (b *Builder) addJoin(joinType types.JoinType, table types.Table, on types.ConditionItem) *Builder {
+	if b.err != nil {
+		return b
+	}
+	if b.ast.Operation != types.OpSelect && b.ast.Operation != types.OpCount {
+		b.err = fmt.Errorf("JOIN can only be used with SELECT or COUNT queries")
+		return b
+	}
+	if joinType == types.CrossJoin && on != nil {
+		b.err = fmt.Errorf("CROSS JOIN cannot have ON clause")
+		return b
+	}
+	if joinType != types.CrossJoin && on == nil {
+		b.err = fmt.Errorf("%s requires ON clause", joinType)
+		return b
+	}
+
+	join := types.Join{
+		Type:  joinType,
+		Table: table,
+		On:    on,
+	}
+
+	b.ast.Joins = append(b.ast.Joins, join)
+	return b
+}
+
+// GroupBy adds GROUP BY fields.
+func (b *Builder) GroupBy(fields ...types.Field) *Builder {
+	if b.err != nil {
+		return b
+	}
+	if b.ast.Operation != types.OpSelect {
+		b.err = fmt.Errorf("GROUP BY can only be used with SELECT queries")
+		return b
+	}
+	b.ast.GroupBy = append(b.ast.GroupBy, fields...)
+	return b
+}
+
+// Having adds HAVING conditions.
+func (b *Builder) Having(conditions ...types.Condition) *Builder {
+	if b.err != nil {
+		return b
+	}
+	if b.ast.Operation != types.OpSelect {
+		b.err = fmt.Errorf("HAVING can only be used with SELECT queries")
+		return b
+	}
+	if len(b.ast.GroupBy) == 0 {
+		b.err = fmt.Errorf("HAVING requires GROUP BY")
+		return b
+	}
+	b.ast.Having = append(b.ast.Having, conditions...)
+	return b
+}
+
+// Returning adds RETURNING fields for INSERT/UPDATE/DELETE.
+func (b *Builder) Returning(fields ...types.Field) *Builder {
+	if b.err != nil {
+		return b
+	}
+	switch b.ast.Operation {
+	case types.OpInsert, types.OpUpdate, types.OpDelete:
+		b.ast.Returning = append(b.ast.Returning, fields...)
+	default:
+		b.err = fmt.Errorf("RETURNING can only be used with INSERT, UPDATE, or DELETE")
+	}
+	return b
+}
+
+// OnConflict adds ON CONFLICT clause for INSERT.
+func (b *Builder) OnConflict(columns ...types.Field) *ConflictBuilder {
+	if b.err != nil {
+		return &ConflictBuilder{builder: b, err: b.err}
+	}
+	if b.ast.Operation != types.OpInsert {
+		err := fmt.Errorf("ON CONFLICT can only be used with INSERT")
+		b.err = err
+		return &ConflictBuilder{builder: b, err: err}
+	}
+
+	b.ast.OnConflict = &types.ConflictClause{
+		Columns: columns,
+	}
+
+	return &ConflictBuilder{builder: b}
+}
+
+// ConflictBuilder handles ON CONFLICT actions.
+type ConflictBuilder struct {
+	builder *Builder
+	err     error
+}
+
+// DoNothing sets the conflict action to DO NOTHING.
+func (cb *ConflictBuilder) DoNothing() *Builder {
+	if cb.err != nil {
+		return cb.builder
+	}
+	cb.builder.ast.OnConflict.Action = types.DoNothing
+	return cb.builder
+}
+
+// DoUpdate sets the conflict action to DO UPDATE.
+func (cb *ConflictBuilder) DoUpdate() *UpdateBuilder {
+	if cb.err != nil {
+		return &UpdateBuilder{builder: cb.builder, err: cb.err}
+	}
+	cb.builder.ast.OnConflict.Action = types.DoUpdate
+	cb.builder.ast.OnConflict.Updates = make(map[types.Field]types.Param)
+	return &UpdateBuilder{
+		builder: cb.builder,
+		updates: cb.builder.ast.OnConflict.Updates,
+	}
+}
+
+// UpdateBuilder handles DO UPDATE SET clause construction.
+type UpdateBuilder struct {
+	builder *Builder
+	updates map[types.Field]types.Param
+	err     error
+}
+
+// Set adds a field to update on conflict.
+func (ub *UpdateBuilder) Set(field types.Field, param types.Param) *UpdateBuilder {
+	if ub.err != nil {
+		return ub
+	}
+	ub.updates[field] = param
+	return ub
+}
+
+// Build finalizes the update and returns the builder.
+func (ub *UpdateBuilder) Build() *Builder {
+	return ub.builder
+}
+
+// SelectExpr adds a field expression (aggregate, case, etc) to SELECT.
+func (b *Builder) SelectExpr(expr types.FieldExpression) *Builder {
+	if b.err != nil {
+		return b
+	}
+	if b.ast.Operation != types.OpSelect {
+		b.err = fmt.Errorf("SelectExpr can only be used with SELECT queries")
+		return b
+	}
+	b.ast.FieldExpressions = append(b.ast.FieldExpressions, expr)
+	return b
 }

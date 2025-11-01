@@ -1,0 +1,345 @@
+package astql_test
+
+import (
+	"testing"
+
+	"github.com/zoobzio/astql"
+	"github.com/zoobzio/dbml"
+)
+
+func createTestInstance(t *testing.T) *astql.ASTQL {
+	t.Helper()
+
+	project := dbml.NewProject("test_db")
+
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("id", "bigint"))
+	users.AddColumn(dbml.NewColumn("username", "varchar"))
+	users.AddColumn(dbml.NewColumn("email", "varchar"))
+	users.AddColumn(dbml.NewColumn("active", "boolean"))
+	project.AddTable(users)
+
+	posts := dbml.NewTable("posts")
+	posts.AddColumn(dbml.NewColumn("id", "bigint"))
+	posts.AddColumn(dbml.NewColumn("user_id", "bigint"))
+	posts.AddColumn(dbml.NewColumn("title", "varchar"))
+	project.AddTable(posts)
+
+	instance, err := astql.NewFromDBML(project)
+	if err != nil {
+		t.Fatalf("Failed to create test instance: %v", err)
+	}
+
+	return instance
+}
+
+func TestNewFromDBML(t *testing.T) {
+	project := dbml.NewProject("test")
+	table := dbml.NewTable("users")
+	table.AddColumn(dbml.NewColumn("id", "bigint"))
+	project.AddTable(table)
+
+	instance, err := astql.NewFromDBML(project)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if instance == nil {
+		t.Fatal("Expected instance, got nil")
+	}
+}
+
+func TestNewFromDBML_NilProject(t *testing.T) {
+	_, err := astql.NewFromDBML(nil)
+	if err == nil {
+		t.Fatal("Expected error for nil project")
+	}
+}
+
+func TestTryF_ValidField(t *testing.T) {
+	instance := createTestInstance(t)
+
+	field, err := instance.TryF("id")
+	if err != nil {
+		t.Fatalf("Expected no error for valid field, got: %v", err)
+	}
+	if field.Name != "id" {
+		t.Errorf("Expected field name 'id', got '%s'", field.Name)
+	}
+}
+
+func TestTryF_InvalidField(t *testing.T) {
+	instance := createTestInstance(t)
+
+	_, err := instance.TryF("nonexistent")
+	if err == nil {
+		t.Fatal("Expected error for invalid field")
+	}
+}
+
+func TestF_ValidField(t *testing.T) {
+	instance := createTestInstance(t)
+
+	field := instance.F("username")
+	if field.Name != "username" {
+		t.Errorf("Expected field name 'username', got '%s'", field.Name)
+	}
+}
+
+func TestF_InvalidField_Panics(t *testing.T) {
+	instance := createTestInstance(t)
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Expected panic for invalid field")
+		}
+	}()
+
+	instance.F("nonexistent")
+}
+
+func TestTryT_ValidTable(t *testing.T) {
+	instance := createTestInstance(t)
+
+	table, err := instance.TryT("users")
+	if err != nil {
+		t.Fatalf("Expected no error for valid table, got: %v", err)
+	}
+	if table.Name != "users" {
+		t.Errorf("Expected table name 'users', got '%s'", table.Name)
+	}
+}
+
+func TestTryT_WithAlias(t *testing.T) {
+	instance := createTestInstance(t)
+
+	table, err := instance.TryT("users", "u")
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if table.Name != "users" {
+		t.Errorf("Expected table name 'users', got '%s'", table.Name)
+	}
+	if table.Alias != "u" {
+		t.Errorf("Expected alias 'u', got '%s'", table.Alias)
+	}
+}
+
+func TestTryT_InvalidTable(t *testing.T) {
+	instance := createTestInstance(t)
+
+	_, err := instance.TryT("nonexistent")
+	if err == nil {
+		t.Fatal("Expected error for invalid table")
+	}
+}
+
+func TestTryT_InvalidAlias(t *testing.T) {
+	instance := createTestInstance(t)
+
+	_, err := instance.TryT("users", "AB")
+	if err == nil {
+		t.Fatal("Expected error for invalid alias (must be single lowercase letter)")
+	}
+}
+
+func TestTryP_ValidParam(t *testing.T) {
+	instance := createTestInstance(t)
+
+	param, err := instance.TryP("user_id")
+	if err != nil {
+		t.Fatalf("Expected no error for valid param, got: %v", err)
+	}
+	if param.Name != "user_id" {
+		t.Errorf("Expected param name 'user_id', got '%s'", param.Name)
+	}
+}
+
+func TestTryP_InvalidParam(t *testing.T) {
+	instance := createTestInstance(t)
+
+	tests := []struct {
+		name  string
+		param string
+	}{
+		{"starts with number", "123abc"},
+		{"contains space", "user id"},
+		{"SQL injection attempt", "id; DROP TABLE"},
+		{"contains comment", "id--"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := instance.TryP(tt.param)
+			if err == nil {
+				t.Errorf("Expected error for param '%s'", tt.param)
+			}
+		})
+	}
+}
+
+func TestTryC_ValidCondition(t *testing.T) {
+	instance := createTestInstance(t)
+
+	field := instance.F("id")
+	param := instance.P("user_id")
+
+	cond, err := instance.TryC(field, "=", param)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if cond.Field.Name != "id" {
+		t.Errorf("Expected field 'id', got '%s'", cond.Field.Name)
+	}
+}
+
+func TestTryNull(t *testing.T) {
+	instance := createTestInstance(t)
+
+	field := instance.F("email")
+	cond, err := instance.TryNull(field)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if cond.Operator != "IS NULL" {
+		t.Errorf("Expected IS NULL operator, got '%s'", cond.Operator)
+	}
+}
+
+func TestTryNotNull(t *testing.T) {
+	instance := createTestInstance(t)
+
+	field := instance.F("email")
+	cond, err := instance.TryNotNull(field)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if cond.Operator != "IS NOT NULL" {
+		t.Errorf("Expected IS NOT NULL operator, got '%s'", cond.Operator)
+	}
+}
+
+func TestTryAnd(t *testing.T) {
+	instance := createTestInstance(t)
+
+	cond1 := instance.C(instance.F("id"), "=", instance.P("id"))
+	cond2 := instance.C(instance.F("active"), "=", instance.P("active"))
+
+	group, err := instance.TryAnd(cond1, cond2)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if group.Logic != "AND" {
+		t.Errorf("Expected AND logic, got '%s'", group.Logic)
+	}
+	if len(group.Conditions) != 2 {
+		t.Errorf("Expected 2 conditions, got %d", len(group.Conditions))
+	}
+}
+
+func TestTryAnd_NoConditions(t *testing.T) {
+	instance := createTestInstance(t)
+
+	_, err := instance.TryAnd()
+	if err == nil {
+		t.Fatal("Expected error for AND with no conditions")
+	}
+}
+
+func TestTryOr(t *testing.T) {
+	instance := createTestInstance(t)
+
+	cond1 := instance.C(instance.F("id"), "=", instance.P("id"))
+	cond2 := instance.C(instance.F("active"), "=", instance.P("active"))
+
+	group, err := instance.TryOr(cond1, cond2)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if group.Logic != "OR" {
+		t.Errorf("Expected OR logic, got '%s'", group.Logic)
+	}
+	if len(group.Conditions) != 2 {
+		t.Errorf("Expected 2 conditions, got %d", len(group.Conditions))
+	}
+}
+
+func TestWithTable(t *testing.T) {
+	instance := createTestInstance(t)
+
+	field := instance.F("id")
+	fieldWithTable := instance.WithTable(field, "u")
+
+	if fieldWithTable.Name != "id" {
+		t.Errorf("Expected field name 'id', got '%s'", fieldWithTable.Name)
+	}
+	if fieldWithTable.Table != "u" {
+		t.Errorf("Expected table 'u', got '%s'", fieldWithTable.Table)
+	}
+}
+
+func TestWithTable_InvalidTable(t *testing.T) {
+	instance := createTestInstance(t)
+
+	field := instance.F("id")
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Expected panic for invalid table reference")
+		}
+	}()
+
+	instance.WithTable(field, "nonexistent")
+}
+
+// Test TryWithTable success case.
+func TestTryWithTable_Success(t *testing.T) {
+	instance := createTestInstance(t)
+
+	field := instance.F("id")
+	fieldWithTable, err := instance.TryWithTable(field, "u")
+
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+	if fieldWithTable.Name != "id" {
+		t.Errorf("Expected field name 'id', got '%s'", fieldWithTable.Name)
+	}
+	if fieldWithTable.Table != "u" {
+		t.Errorf("Expected table 'u', got '%s'", fieldWithTable.Table)
+	}
+}
+
+// Test TryWithTable with invalid table.
+func TestTryWithTable_InvalidTable(t *testing.T) {
+	instance := createTestInstance(t)
+
+	field := instance.F("id")
+	_, err := instance.TryWithTable(field, "nonexistent")
+
+	if err == nil {
+		t.Error("Expected error for invalid table reference")
+	}
+}
+
+// Test GetInstance method.
+func TestGetInstance(t *testing.T) {
+	instance := createTestInstance(t)
+
+	retrieved := instance.GetInstance()
+
+	if retrieved != instance {
+		t.Error("GetInstance should return the same instance")
+	}
+}
+
+// Test LoadFromDBML (not implemented).
+func TestLoadFromDBML(t *testing.T) {
+	_, err := astql.LoadFromDBML("test.dbml")
+
+	if err == nil {
+		t.Error("Expected error for unimplemented LoadFromDBML")
+	}
+	if err.Error() != "LoadFromDBML not yet implemented - use NewFromDBML instead" {
+		t.Errorf("Unexpected error message: %v", err)
+	}
+}
