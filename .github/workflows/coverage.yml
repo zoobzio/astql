@@ -35,50 +35,28 @@ jobs:
     
     - name: Run tests with coverage
       run: |
-        # Test main package
-        echo "=== Testing main package ==="
-        go test -v -race -coverprofile=coverage-main.out -covermode=atomic \
+        # Test all packages
+        echo "=== Testing all packages ==="
+        go test -v -race -coverprofile=coverage-all.out -covermode=atomic \
           -coverpkg=github.com/zoobzio/astql ./...
-        
-        # Test PostgreSQL provider
-        echo "=== Testing PostgreSQL provider ==="
-        go test -v -race -coverprofile=coverage-postgres.out -covermode=atomic \
-          ./providers/postgres
-        
-        # Test SQLite provider
-        echo "=== Testing SQLite provider ==="
-        go test -v -race -coverprofile=coverage-sqlite.out -covermode=atomic \
-          ./providers/sqlite
-        
-        # Merge coverage files
-        echo "mode: atomic" > coverage-all.out
-        tail -n +2 coverage-main.out >> coverage-all.out
-        tail -n +2 coverage-postgres.out >> coverage-all.out
-        tail -n +2 coverage-sqlite.out >> coverage-all.out
-        
+
         # Generate coverage report
         go tool cover -func=coverage-all.out > coverage-summary.txt
         echo "Overall Coverage Summary:"
         tail -1 coverage-summary.txt
-        
+
         # Generate HTML report
         go tool cover -html=coverage-all.out -o coverage-all.html
-        
+
         # Convert to Cobertura format for better PR integration
         gocover-cobertura < coverage-all.out > coverage-all.xml
     
-    - name: Generate provider-specific reports
+    - name: Generate package-specific reports
       run: |
-        echo "=== Provider Coverage Reports ==="
-        
-        # PostgreSQL coverage
-        go tool cover -func=coverage-postgres.out | tail -1 | awk '{print "PostgreSQL Provider: " $3}'
-        
-        # SQLite coverage
-        go tool cover -func=coverage-sqlite.out | tail -1 | awk '{print "SQLite Provider: " $3}'
-        
-        # Main package coverage
-        go tool cover -func=coverage-main.out | tail -1 | awk '{print "Main Package: " $3}'
+        echo "=== Package Coverage Reports ==="
+
+        # Overall coverage
+        go tool cover -func=coverage-all.out | tail -1 | awk '{print "Overall: " $3}'
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
@@ -122,23 +100,18 @@ jobs:
           const totalLine = lines[lines.length - 1];
           const coverage = totalLine.match(/(\d+\.\d+)%/)?.[1] || 'N/A';
           
-          // Extract provider coverage from stdout (would need to be saved to file)
-          const providerMetrics = `
-          | Provider | Coverage |
+          // Package metrics
+          const packageMetrics = `
+          | Package | Coverage |
           |----------|----------|
-          | PostgreSQL | See CI logs |
-          | SQLite | See CI logs |
-          | Main Package | See CI logs |
+          | Overall | ${coverage}% |
           `;
           
           // Create comment body
           const body = `## 📊 Coverage Report
-          
+
           **Total Coverage:** ${coverage}%
-          
-          ### Coverage by Provider
-          ${providerMetrics}
-          
+
           ### Coverage by Package
           \`\`\`
           ${lines.slice(0, -1).join('\n')}
@@ -190,9 +163,9 @@ jobs:
       with:
         name: coverage-reports
         path: |
-          coverage-*.out
-          coverage-*.html
-          coverage-*.xml
+          coverage-all.out
+          coverage-all.html
+          coverage-all.xml
           coverage-summary.txt
         retention-days: 30
     
@@ -207,9 +180,8 @@ jobs:
         head -n -1 coverage-summary.txt >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "#### Provider Coverage" >> $GITHUB_STEP_SUMMARY
-        echo "- PostgreSQL: $(go tool cover -func=coverage-postgres.out | tail -1 | awk '{print $3}')" >> $GITHUB_STEP_SUMMARY
-        echo "- SQLite: $(go tool cover -func=coverage-sqlite.out | tail -1 | awk '{print $3}')" >> $GITHUB_STEP_SUMMARY
+        echo "#### Package Coverage" >> $GITHUB_STEP_SUMMARY
+        echo "- Overall: $(go tool cover -func=coverage-all.out | tail -1 | awk '{print $3}')" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "#### Coverage Standards" >> $GITHUB_STEP_SUMMARY
         echo "- 🎯 Target: 70% overall" >> $GITHUB_STEP_SUMMARY
