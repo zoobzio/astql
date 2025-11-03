@@ -56,3 +56,6 @@ const (
 	EXISTS    = types.EXISTS
 	NotExists = types.NotExists
 )
+
+// ConditionItem represents either a single condition or a group of conditions.
+type ConditionItem = types.ConditionItem
