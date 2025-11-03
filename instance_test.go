@@ -453,3 +453,74 @@ func TestFactories_MultiRowInsert(t *testing.T) {
 		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
 	}
 }
+
+func TestFactories_ProgrammaticConditionItems(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("id", "bigint"))
+	users.AddColumn(dbml.NewColumn("active", "boolean"))
+	users.AddColumn(dbml.NewColumn("age", "int"))
+	project.AddTable(users)
+
+	instance, err := astql.NewFromDBML(project)
+	if err != nil {
+		t.Fatalf("Failed to create instance: %v", err)
+	}
+
+	// Simulate dynamic condition building
+	conditions := instance.ConditionItems()
+	conditions = append(conditions, instance.C(instance.F("id"), "=", instance.P("user_id")))
+	conditions = append(conditions, instance.C(instance.F("active"), "=", instance.P("is_active")))
+	conditions = append(conditions, instance.C(instance.F("age"), ">", instance.P("min_age")))
+
+	result, err := astql.Select(instance.T("users")).
+		Where(instance.And(conditions...)).
+		Render()
+
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT * FROM "users" WHERE ("id" = :user_id AND "active" = :is_active AND "age" > :min_age)`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestFactories_ConditionItemsWithOr(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("status", "varchar"))
+	users.AddColumn(dbml.NewColumn("role", "varchar"))
+	project.AddTable(users)
+
+	instance, err := astql.NewFromDBML(project)
+	if err != nil {
+		t.Fatalf("Failed to create instance: %v", err)
+	}
+
+	// Build OR conditions dynamically
+	statusValues := []string{"active", "pending", "verified"}
+
+	conditions := instance.ConditionItems()
+	for _, status := range statusValues {
+		conditions = append(conditions, instance.C(
+			instance.F("status"),
+			"=",
+			instance.P(status),
+		))
+	}
+
+	result, err := astql.Select(instance.T("users")).
+		Where(instance.Or(conditions...)).
+		Render()
+
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT * FROM "users" WHERE ("status" = :active OR "status" = :pending OR "status" = :verified)`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
