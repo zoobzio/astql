@@ -343,3 +343,113 @@ func TestLoadFromDBML(t *testing.T) {
 		t.Errorf("Unexpected error message: %v", err)
 	}
 }
+
+// Test that factory methods enable programmatic query building.
+func TestFactories_ProgrammaticFields(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("id", "bigint"))
+	users.AddColumn(dbml.NewColumn("username", "varchar"))
+	users.AddColumn(dbml.NewColumn("email", "varchar"))
+	users.AddColumn(dbml.NewColumn("age", "int"))
+	project.AddTable(users)
+
+	instance, err := astql.NewFromDBML(project)
+	if err != nil {
+		t.Fatalf("Failed to create instance: %v", err)
+	}
+
+	// Simulate dynamic field selection
+	dynamicFieldNames := []string{"id", "username", "email"}
+
+	fields := instance.Fields()
+	for _, name := range dynamicFieldNames {
+		fields = append(fields, instance.F(name))
+	}
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(fields...).
+		Render()
+
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "id", "username", "email" FROM "users"`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestFactories_ProgrammaticValues(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("id", "bigint"))
+	users.AddColumn(dbml.NewColumn("username", "varchar"))
+	users.AddColumn(dbml.NewColumn("email", "varchar"))
+	project.AddTable(users)
+
+	instance, err := astql.NewFromDBML(project)
+	if err != nil {
+		t.Fatalf("Failed to create instance: %v", err)
+	}
+
+	// Simulate dynamic insert values
+	// Map field names to parameter names (both must be valid identifiers)
+	dynamicFields := []string{"username", "email"}
+
+	vm := instance.ValueMap()
+	for _, field := range dynamicFields {
+		vm[instance.F(field)] = instance.P(field)
+	}
+
+	result, err := astql.Insert(instance.T("users")).
+		Values(vm).
+		Render()
+
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	// Fields are sorted alphabetically
+	expected := `INSERT INTO "users" ("email", "username") VALUES (:email, :username)`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestFactories_MultiRowInsert(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("username", "varchar"))
+	users.AddColumn(dbml.NewColumn("email", "varchar"))
+	project.AddTable(users)
+
+	instance, err := astql.NewFromDBML(project)
+	if err != nil {
+		t.Fatalf("Failed to create instance: %v", err)
+	}
+
+	// Simulate inserting multiple rows
+	// Each row uses the same field names with numbered parameters
+	fieldNames := []string{"username", "email"}
+
+	query := astql.Insert(instance.T("users"))
+	for i := 0; i < 3; i++ {
+		vm := instance.ValueMap()
+		for _, field := range fieldNames {
+			vm[instance.F(field)] = instance.P(field)
+		}
+		query = query.Values(vm)
+	}
+
+	result, err := query.Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `INSERT INTO "users" ("email", "username") VALUES (:email, :username), (:email, :username), (:email, :username)`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}

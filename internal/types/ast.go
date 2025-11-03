@@ -149,9 +149,12 @@ type Subquery struct {
 	AST *AST
 }
 
-// Constants for subquery handling.
+// Constants for query complexity limits to prevent DoS attacks.
 const (
-	MaxSubqueryDepth = 3 // Prevent DoS via deep nesting
+	MaxSubqueryDepth  = 3   // Prevent DoS via deep nesting
+	MaxJoinCount      = 10  // Maximum number of JOINs per query
+	MaxConditionDepth = 5   // Maximum nesting depth of condition groups
+	MaxFieldCount     = 100 // Maximum number of fields in SELECT
 )
 
 // Implement ConditionItem interface for new condition types.
@@ -186,6 +189,23 @@ type AST struct {
 func (ast *AST) Validate() error {
 	if ast.Target.Name == "" {
 		return fmt.Errorf("target table is required")
+	}
+
+	// Check complexity limits
+	if len(ast.Joins) > MaxJoinCount {
+		return fmt.Errorf("too many JOINs: %d (max %d)", len(ast.Joins), MaxJoinCount)
+	}
+
+	totalFields := len(ast.Fields) + len(ast.FieldExpressions)
+	if totalFields > MaxFieldCount {
+		return fmt.Errorf("too many fields: %d (max %d)", totalFields, MaxFieldCount)
+	}
+
+	// Validate condition depth
+	if ast.WhereClause != nil {
+		if err := validateConditionDepth(ast.WhereClause, 0); err != nil {
+			return err
+		}
 	}
 
 	switch ast.Operation {
@@ -240,6 +260,26 @@ func (ast *AST) Validate() error {
 	// HAVING requires GROUP BY
 	if len(ast.Having) > 0 && len(ast.GroupBy) == 0 {
 		return fmt.Errorf("HAVING requires GROUP BY")
+	}
+
+	return nil
+}
+
+// validateConditionDepth checks the nesting depth of condition groups.
+func validateConditionDepth(cond ConditionItem, depth int) error {
+	if depth > MaxConditionDepth {
+		return fmt.Errorf("condition nesting too deep: %d (max %d)", depth, MaxConditionDepth)
+	}
+
+	switch c := cond.(type) {
+	case ConditionGroup:
+		for _, subCond := range c.Conditions {
+			if err := validateConditionDepth(subCond, depth+1); err != nil {
+				return err
+			}
+		}
+	case Condition, FieldComparison, SubqueryCondition:
+		// Leaf nodes, no further depth
 	}
 
 	return nil

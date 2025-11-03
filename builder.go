@@ -145,44 +145,25 @@ func (b *Builder) Set(f types.Field, p types.Param) *Builder {
 	return b
 }
 
-// Value adds a single field-value pair for INSERT queries.
-// Multiple calls to Value() build up a single row to insert.
-// Call NextRow() to finalize the current row and start a new one.
-func (b *Builder) Value(f types.Field, p types.Param) *Builder {
+// Values adds a row of field-value pairs for INSERT queries.
+// Call Values() multiple times to insert multiple rows.
+// Use instance.ValueMap() to create the map programmatically.
+func (b *Builder) Values(valueMap map[types.Field]types.Param) *Builder {
 	if b.err != nil {
 		return b
 	}
 	if b.ast.Operation != types.OpInsert {
-		b.err = fmt.Errorf("Value() can only be used with INSERT queries")
+		b.err = fmt.Errorf("Values() can only be used with INSERT queries")
+		return b
+	}
+	if len(valueMap) == 0 {
+		b.err = fmt.Errorf("Values() requires at least one field-value pair")
 		return b
 	}
 	if b.ast.Values == nil {
 		b.ast.Values = []map[types.Field]types.Param{}
 	}
-	// If there are no value sets yet, create the first one
-	if len(b.ast.Values) == 0 {
-		b.ast.Values = append(b.ast.Values, make(map[types.Field]types.Param))
-	}
-	// Add to the last value set
-	lastIdx := len(b.ast.Values) - 1
-	b.ast.Values[lastIdx][f] = p
-	return b
-}
-
-// NextRow finalizes the current row and starts a new one for INSERT queries.
-func (b *Builder) NextRow() *Builder {
-	if b.err != nil {
-		return b
-	}
-	if b.ast.Operation != types.OpInsert {
-		b.err = fmt.Errorf("NextRow() can only be used with INSERT queries")
-		return b
-	}
-	if b.ast.Values == nil {
-		b.ast.Values = []map[types.Field]types.Param{}
-	}
-	// Add a new empty map for the next row
-	b.ast.Values = append(b.ast.Values, make(map[types.Field]types.Param))
+	b.ast.Values = append(b.ast.Values, valueMap)
 	return b
 }
 

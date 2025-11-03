@@ -359,3 +359,18 @@ func (a *ASTQL) TryWithTable(field types.Field, tableOrAlias string) (types.Fiel
 func (a *ASTQL) GetInstance() *ASTQL {
 	return a
 }
+
+// Fields returns an empty slice of Field for programmatic query building.
+func (*ASTQL) Fields() []types.Field {
+	return []types.Field{}
+}
+
+// Conditions returns an empty slice of Condition for programmatic query building.
+func (*ASTQL) Conditions() []types.Condition {
+	return []types.Condition{}
+}
+
+// ValueMap returns an empty map for programmatic INSERT value building.
+func (*ASTQL) ValueMap() map[types.Field]types.Param {
+	return make(map[types.Field]types.Param)
+}

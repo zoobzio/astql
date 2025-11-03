@@ -311,9 +311,12 @@ func TestRender_Select_MultipleJoins(t *testing.T) {
 func TestRender_Insert_Basic(t *testing.T) {
 	instance := createRenderTestInstance(t)
 
+	vm := instance.ValueMap()
+	vm[instance.F("username")] = instance.P("username")
+	vm[instance.F("email")] = instance.P("email")
+
 	result, err := astql.Insert(instance.T("users")).
-		Value(instance.F("username"), instance.P("username")).
-		Value(instance.F("email"), instance.P("email")).
+		Values(vm).
 		Render()
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
@@ -333,8 +336,11 @@ func TestRender_Insert_Basic(t *testing.T) {
 func TestRender_Insert_WithReturning(t *testing.T) {
 	instance := createRenderTestInstance(t)
 
+	vm := instance.ValueMap()
+	vm[instance.F("username")] = instance.P("username")
+
 	result, err := astql.Insert(instance.T("users")).
-		Value(instance.F("username"), instance.P("username")).
+		Values(vm).
 		Returning(instance.F("id"), instance.F("created_at")).
 		Render()
 	if err != nil {
@@ -350,9 +356,12 @@ func TestRender_Insert_WithReturning(t *testing.T) {
 func TestRender_Insert_OnConflictDoNothing(t *testing.T) {
 	instance := createRenderTestInstance(t)
 
+	vm := instance.ValueMap()
+	vm[instance.F("username")] = instance.P("username")
+	vm[instance.F("email")] = instance.P("email")
+
 	result, err := astql.Insert(instance.T("users")).
-		Value(instance.F("username"), instance.P("username")).
-		Value(instance.F("email"), instance.P("email")).
+		Values(vm).
 		OnConflict(instance.F("email")).DoNothing().
 		Render()
 	if err != nil {
@@ -368,9 +377,12 @@ func TestRender_Insert_OnConflictDoNothing(t *testing.T) {
 func TestRender_Insert_OnConflictDoUpdate(t *testing.T) {
 	instance := createRenderTestInstance(t)
 
+	vm := instance.ValueMap()
+	vm[instance.F("username")] = instance.P("username")
+	vm[instance.F("email")] = instance.P("email")
+
 	result, err := astql.Insert(instance.T("users")).
-		Value(instance.F("username"), instance.P("username")).
-		Value(instance.F("email"), instance.P("email")).
+		Values(vm).
 		OnConflict(instance.F("email")).
 		DoUpdate().
 		Set(instance.F("username"), instance.P("new_username")).

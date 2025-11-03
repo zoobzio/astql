@@ -55,8 +55,10 @@ func TestInsert(t *testing.T) {
 	instance := createBuilderTestInstance(t)
 	table := instance.T("users")
 
-	builder := astql.Insert(table).
-		Value(instance.F("username"), instance.P("username"))
+	vm := instance.ValueMap()
+	vm[instance.F("username")] = instance.P("username")
+
+	builder := astql.Insert(table).Values(vm)
 	ast, err := builder.Build()
 
 	if err != nil {
@@ -231,13 +233,15 @@ func TestSet_WrongOperation(t *testing.T) {
 	}
 }
 
-func TestValue(t *testing.T) {
+func TestValues(t *testing.T) {
 	instance := createBuilderTestInstance(t)
 	table := instance.T("users")
 
-	builder := astql.Insert(table).
-		Value(instance.F("username"), instance.P("username")).
-		Value(instance.F("email"), instance.P("email"))
+	vm := instance.ValueMap()
+	vm[instance.F("username")] = instance.P("username")
+	vm[instance.F("email")] = instance.P("email")
+
+	builder := astql.Insert(table).Values(vm)
 
 	ast, err := builder.Build()
 	if err != nil {
@@ -251,29 +255,34 @@ func TestValue(t *testing.T) {
 	}
 }
 
-func TestValue_WrongOperation(t *testing.T) {
+func TestValues_WrongOperation(t *testing.T) {
 	instance := createBuilderTestInstance(t)
 	table := instance.T("users")
 
-	builder := astql.Select(table).
-		Value(instance.F("username"), instance.P("username"))
+	vm := instance.ValueMap()
+	vm[instance.F("username")] = instance.P("username")
+
+	builder := astql.Select(table).Values(vm)
 
 	_, err := builder.Build()
 	if err == nil {
-		t.Fatal("Expected error when using Value() with SELECT")
+		t.Fatal("Expected error when using Values() with SELECT")
 	}
 }
 
-func TestNextRow(t *testing.T) {
+func TestValues_MultiRow(t *testing.T) {
 	instance := createBuilderTestInstance(t)
 	table := instance.T("users")
 
-	builder := astql.Insert(table).
-		Value(instance.F("username"), instance.P("user1")).
-		Value(instance.F("email"), instance.P("email1")).
-		NextRow().
-		Value(instance.F("username"), instance.P("user2")).
-		Value(instance.F("email"), instance.P("email2"))
+	vm1 := instance.ValueMap()
+	vm1[instance.F("username")] = instance.P("user1")
+	vm1[instance.F("email")] = instance.P("email1")
+
+	vm2 := instance.ValueMap()
+	vm2[instance.F("username")] = instance.P("user2")
+	vm2[instance.F("email")] = instance.P("email2")
+
+	builder := astql.Insert(table).Values(vm1).Values(vm2)
 
 	ast, err := builder.Build()
 	if err != nil {
@@ -290,24 +299,28 @@ func TestNextRow(t *testing.T) {
 	}
 }
 
-func TestNextRow_WrongOperation(t *testing.T) {
+func TestValues_EmptyMap(t *testing.T) {
 	instance := createBuilderTestInstance(t)
 	table := instance.T("users")
 
-	builder := astql.Select(table).NextRow()
+	vm := instance.ValueMap()
+
+	builder := astql.Insert(table).Values(vm)
 
 	_, err := builder.Build()
 	if err == nil {
-		t.Fatal("Expected error when using NextRow() with SELECT")
+		t.Fatal("Expected error when using Values() with empty map")
 	}
 }
 
-func TestValue_SingleRow(t *testing.T) {
+func TestValues_SingleRow(t *testing.T) {
 	instance := createBuilderTestInstance(t)
 	table := instance.T("users")
 
-	builder := astql.Insert(table).
-		Value(instance.F("username"), instance.P("username"))
+	vm := instance.ValueMap()
+	vm[instance.F("username")] = instance.P("username")
+
+	builder := astql.Insert(table).Values(vm)
 
 	ast, err := builder.Build()
 	if err != nil {

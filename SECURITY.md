@@ -39,7 +39,6 @@ Please include the following information (as much as you can provide) to help us
 - **Step-by-step instructions** to reproduce the issue
 - **Proof-of-concept or exploit code** (if possible)
 - **Impact of the issue**, including how an attacker might exploit the issue
-- **Which database provider** (PostgreSQL, SQLite, or both) is affected
 - **Your name and affiliation** (optional)
 
 ### Security Considerations for ASTQL
@@ -49,8 +48,7 @@ Given that ASTQL is a SQL query builder, please pay special attention to:
 - **SQL Injection vulnerabilities** - Any way to bypass parameterization
 - **Parameter validation issues** - Improper sanitization of parameter names
 - **Field/Table validation bypasses** - Ways to inject arbitrary SQL through field or table names
-- **Schema validation vulnerabilities** - Issues with YAML/JSON schema parsing
-- **Provider-specific vulnerabilities** - Issues unique to PostgreSQL or SQLite implementations
+- **Schema validation vulnerabilities** - Issues with DBML schema parsing
 
 ### What to Expect
 
@@ -66,22 +64,21 @@ When using ASTQL in your applications:
 
 1. **Always use parameterized queries** - Never concatenate user input directly
 2. **Validate all input** - Use the `Try*` functions for user-provided data
-3. **Use sentinel for struct validation** - Register all structs with sentinel before use
-4. **Keep dependencies updated** - Regularly update ASTQL and its dependencies
-5. **Review generated SQL** - In development, log and review the generated SQL queries
-6. **Use least privilege** - Database connections should have minimal required permissions
-7. **Sanitize schema inputs** - When using schema-based queries, validate all YAML/JSON input
+3. **Keep dependencies updated** - Regularly update ASTQL and its dependencies
+4. **Review generated SQL** - In development, log and review the generated SQL queries
+5. **Use least privilege** - Database connections should have minimal required permissions
+6. **Validate schema inputs** - When loading DBML schemas, ensure they come from trusted sources
 
 ## Security Features
 
 ASTQL includes several security features:
 
 - **Automatic parameterization** - All values are parameterized by default
+- **Schema validation** - All tables and fields must exist in DBML schema
 - **Input validation** - Field, table, and parameter names are validated
 - **SQL keyword blocking** - Parameter names cannot be SQL keywords
 - **Injection prevention** - Special characters in identifiers are escaped
 - **Type safety** - Go's type system prevents many common mistakes
-- **Provider isolation** - Database-specific code is isolated per provider
 
 ## Contact
 
