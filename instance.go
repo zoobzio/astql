@@ -379,3 +379,114 @@ func (*ASTQL) ConditionItems() []types.ConditionItem {
 func (*ASTQL) ValueMap() map[types.Field]types.Param {
 	return make(map[types.Field]types.Param)
 }
+
+// Operation constants.
+
+// OpSelect returns the Select operation constant.
+func (*ASTQL) OpSelect() types.Operation {
+	return types.OpSelect
+}
+
+// OpInsert returns the Insert operation constant.
+func (*ASTQL) OpInsert() types.Operation {
+	return types.OpInsert
+}
+
+// OpUpdate returns the Update operation constant.
+func (*ASTQL) OpUpdate() types.Operation {
+	return types.OpUpdate
+}
+
+// OpDelete returns the Delete operation constant.
+func (*ASTQL) OpDelete() types.Operation {
+	return types.OpDelete
+}
+
+// OpCount returns the Count operation constant.
+func (*ASTQL) OpCount() types.Operation {
+	return types.OpCount
+}
+
+// Direction constants.
+
+// ASC returns the ascending sort direction constant.
+func (*ASTQL) ASC() types.Direction {
+	return types.ASC
+}
+
+// DESC returns the descending sort direction constant.
+func (*ASTQL) DESC() types.Direction {
+	return types.DESC
+}
+
+// Operator constants.
+
+// EQ returns the equals operator constant.
+func (*ASTQL) EQ() types.Operator {
+	return types.EQ
+}
+
+// NE returns the not equals operator constant.
+func (*ASTQL) NE() types.Operator {
+	return types.NE
+}
+
+// GT returns the greater than operator constant.
+func (*ASTQL) GT() types.Operator {
+	return types.GT
+}
+
+// GE returns the greater than or equal operator constant.
+func (*ASTQL) GE() types.Operator {
+	return types.GE
+}
+
+// LT returns the less than operator constant.
+func (*ASTQL) LT() types.Operator {
+	return types.LT
+}
+
+// LE returns the less than or equal operator constant.
+func (*ASTQL) LE() types.Operator {
+	return types.LE
+}
+
+// IN returns the IN operator constant.
+func (*ASTQL) IN() types.Operator {
+	return types.IN
+}
+
+// NotIn returns the NOT IN operator constant.
+func (*ASTQL) NotIn() types.Operator {
+	return types.NotIn
+}
+
+// LIKE returns the LIKE operator constant.
+func (*ASTQL) LIKE() types.Operator {
+	return types.LIKE
+}
+
+// NotLike returns the NOT LIKE operator constant.
+func (*ASTQL) NotLike() types.Operator {
+	return types.NotLike
+}
+
+// IsNull returns the IS NULL operator constant.
+func (*ASTQL) IsNull() types.Operator {
+	return types.IsNull
+}
+
+// IsNotNull returns the IS NOT NULL operator constant.
+func (*ASTQL) IsNotNull() types.Operator {
+	return types.IsNotNull
+}
+
+// EXISTS returns the EXISTS operator constant.
+func (*ASTQL) EXISTS() types.Operator {
+	return types.EXISTS
+}
+
+// NotExists returns the NOT EXISTS operator constant.
+func (*ASTQL) NotExists() types.Operator {
+	return types.NotExists
+}

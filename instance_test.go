@@ -524,3 +524,87 @@ func TestFactories_ConditionItemsWithOr(t *testing.T) {
 		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
 	}
 }
+
+// Test Operation accessor methods.
+func TestOperationAccessors(t *testing.T) {
+	instance := createTestInstance(t)
+
+	tests := []struct {
+		name     string
+		accessor func() astql.Operation
+		expected astql.Operation
+	}{
+		{"OpSelect", instance.OpSelect, astql.OpSelect},
+		{"OpInsert", instance.OpInsert, astql.OpInsert},
+		{"OpUpdate", instance.OpUpdate, astql.OpUpdate},
+		{"OpDelete", instance.OpDelete, astql.OpDelete},
+		{"OpCount", instance.OpCount, astql.OpCount},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.accessor()
+			if result != tt.expected {
+				t.Errorf("Expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
+// Test Direction accessor methods.
+func TestDirectionAccessors(t *testing.T) {
+	instance := createTestInstance(t)
+
+	tests := []struct {
+		name     string
+		accessor func() astql.Direction
+		expected astql.Direction
+	}{
+		{"ASC", instance.ASC, astql.ASC},
+		{"DESC", instance.DESC, astql.DESC},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.accessor()
+			if result != tt.expected {
+				t.Errorf("Expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
+// Test Operator accessor methods.
+func TestOperatorAccessors(t *testing.T) {
+	instance := createTestInstance(t)
+
+	tests := []struct {
+		name     string
+		accessor func() astql.Operator
+		expected astql.Operator
+	}{
+		{"EQ", instance.EQ, astql.EQ},
+		{"NE", instance.NE, astql.NE},
+		{"GT", instance.GT, astql.GT},
+		{"GE", instance.GE, astql.GE},
+		{"LT", instance.LT, astql.LT},
+		{"LE", instance.LE, astql.LE},
+		{"IN", instance.IN, astql.IN},
+		{"NotIn", instance.NotIn, astql.NotIn},
+		{"LIKE", instance.LIKE, astql.LIKE},
+		{"NotLike", instance.NotLike, astql.NotLike},
+		{"IsNull", instance.IsNull, astql.IsNull},
+		{"IsNotNull", instance.IsNotNull, astql.IsNotNull},
+		{"EXISTS", instance.EXISTS, astql.EXISTS},
+		{"NotExists", instance.NotExists, astql.NotExists},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.accessor()
+			if result != tt.expected {
+				t.Errorf("Expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
