@@ -1,11 +1,13 @@
+# ASTQL - Schema-Validated SQL Query Builder
+
 [![CI](https://github.com/zoobzio/astql/actions/workflows/ci.yml/badge.svg)](https://github.com/zoobzio/astql/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/zoobzio/astql/branch/main/graph/badge.svg)](https://codecov.io/gh/zoobzio/astql)
-[![CodeQL](https://github.com/zoobzio/astql/actions/workflows/codeql.yml/badge.svg)](https://github.com/zoobzio/astql/actions/workflows/codeql.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/zoobzio/astql)](https://goreportcard.com/report/github.com/zoobzio/astql)
+[![CodeQL](https://github.com/zoobzio/astql/actions/workflows/codeql.yml/badge.svg)](https://github.com/zoobzio/astql/actions/workflows/codeql.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/zoobzio/astql.svg)](https://pkg.go.dev/github.com/zoobzio/astql)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-
-# ASTQL - Schema-Validated SQL Query Builder
+[![License](https://img.shields.io/github/license/zoobzio/astql)](LICENSE)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/zoobzio/astql)](go.mod)
+[![Release](https://img.shields.io/github/v/release/zoobzio/astql)](https://github.com/zoobzio/astql/releases)
 
 ASTQL is a **SQL injection-resistant** PostgreSQL query builder for Go that validates all queries against a DBML schema before rendering. It uses an Abstract Syntax Tree (AST) approach to prevent SQL injection attacks through schema validation and parameterized queries.
 
