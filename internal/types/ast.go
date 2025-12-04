@@ -25,6 +25,10 @@ const (
 type OrderBy struct {
 	Field     Field
 	Direction Direction
+	// Expression fields for ORDER BY field <op> param (e.g., vector distance).
+	// When Operator is set, renders as: field <op> param [direction]
+	Operator Operator
+	Param    Param
 }
 
 // JoinType represents the type of SQL join.

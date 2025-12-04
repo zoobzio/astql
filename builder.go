@@ -182,6 +182,23 @@ func (b *Builder) OrderBy(f types.Field, direction types.Direction) *Builder {
 	return b
 }
 
+// Useful for vector distance ordering: ORDER BY embedding <-> :query_vector ASC.
+func (b *Builder) OrderByExpr(f types.Field, op types.Operator, p types.Param, direction types.Direction) *Builder {
+	if b.err != nil {
+		return b
+	}
+	if b.ast.Ordering == nil {
+		b.ast.Ordering = []types.OrderBy{}
+	}
+	b.ast.Ordering = append(b.ast.Ordering, types.OrderBy{
+		Field:     f,
+		Operator:  op,
+		Param:     p,
+		Direction: direction,
+	})
+	return b
+}
+
 // Limit sets the limit.
 func (b *Builder) Limit(limit int) *Builder {
 	if b.err != nil {

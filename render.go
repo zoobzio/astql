@@ -189,7 +189,17 @@ func renderSelect(ast *types.AST, sql *strings.Builder, ctx *renderContext) erro
 		sql.WriteString(" ORDER BY ")
 		var orderParts []string
 		for _, order := range ast.Ordering {
-			orderParts = append(orderParts, fmt.Sprintf("%s %s", renderField(order.Field), order.Direction))
+			if order.Operator != "" {
+				// Expression-based ordering: field <op> param direction
+				orderParts = append(orderParts, fmt.Sprintf("%s %s %s %s",
+					renderField(order.Field),
+					renderOperator(order.Operator),
+					ctx.addParam(order.Param),
+					order.Direction))
+			} else {
+				// Simple field ordering
+				orderParts = append(orderParts, fmt.Sprintf("%s %s", renderField(order.Field), order.Direction))
+			}
 		}
 		sql.WriteString(strings.Join(orderParts, ", "))
 	}

@@ -1235,3 +1235,64 @@ func TestRender_Select_VectorL1Distance(t *testing.T) {
 		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
 	}
 }
+
+// Test OrderByExpr for vector distance ordering.
+func TestRender_Select_OrderByExpr_VectorDistance(t *testing.T) {
+	instance := createVectorTestInstance(t)
+
+	result, err := astql.Select(instance.T("documents")).
+		Fields(instance.F("id"), instance.F("content")).
+		OrderByExpr(instance.F("embedding"), astql.VectorL2Distance, instance.P("query_embedding"), astql.ASC).
+		Limit(10).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "id", "content" FROM "documents" ORDER BY "embedding" <-> :query_embedding ASC LIMIT 10`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+
+	if len(result.RequiredParams) != 1 || result.RequiredParams[0] != "query_embedding" {
+		t.Errorf("Expected params [query_embedding], got %v", result.RequiredParams)
+	}
+}
+
+// Test OrderByExpr combined with WHERE for semantic search.
+func TestRender_Select_OrderByExpr_WithWhere(t *testing.T) {
+	instance := createVectorTestInstance(t)
+
+	result, err := astql.Select(instance.T("documents")).
+		Fields(instance.F("id"), instance.F("content")).
+		Where(instance.NotNull(instance.F("embedding"))).
+		OrderByExpr(instance.F("embedding"), astql.VectorL2Distance, instance.P("query_embedding"), astql.ASC).
+		Limit(10).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "id", "content" FROM "documents" WHERE "embedding" IS NOT NULL ORDER BY "embedding" <-> :query_embedding ASC LIMIT 10`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+// Test OrderByExpr with cosine distance.
+func TestRender_Select_OrderByExpr_CosineDistance(t *testing.T) {
+	instance := createVectorTestInstance(t)
+
+	result, err := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		OrderByExpr(instance.F("embedding"), astql.VectorCosineDistance, instance.P("query"), astql.ASC).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "id" FROM "documents" ORDER BY "embedding" <=> :query ASC`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
