@@ -1138,3 +1138,100 @@ func TestRender_Select_MultipleMathExpressions(t *testing.T) {
 		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
 	}
 }
+
+// createVectorTestInstance creates a test instance with vector columns.
+func createVectorTestInstance(t *testing.T) *astql.ASTQL {
+	t.Helper()
+
+	project := dbml.NewProject("test")
+
+	documents := dbml.NewTable("documents")
+	documents.AddColumn(dbml.NewColumn("id", "bigint"))
+	documents.AddColumn(dbml.NewColumn("content", "text"))
+	documents.AddColumn(dbml.NewColumn("embedding", "vector(1536)"))
+	project.AddTable(documents)
+
+	instance, err := astql.NewFromDBML(project)
+	if err != nil {
+		t.Fatalf("Failed to create instance: %v", err)
+	}
+	return instance
+}
+
+// Test vector L2 distance operator (pgvector <->).
+func TestRender_Select_VectorL2Distance(t *testing.T) {
+	instance := createVectorTestInstance(t)
+
+	result, err := astql.Select(instance.T("documents")).
+		Fields(instance.F("id"), instance.F("content")).
+		Where(instance.C(instance.F("embedding"), astql.VectorL2Distance, instance.P("query_embedding"))).
+		OrderBy(instance.F("embedding"), astql.ASC).
+		Limit(10).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "id", "content" FROM "documents" WHERE "embedding" <-> :query_embedding ORDER BY "embedding" ASC LIMIT 10`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+
+	if len(result.RequiredParams) != 1 || result.RequiredParams[0] != "query_embedding" {
+		t.Errorf("Expected params [query_embedding], got %v", result.RequiredParams)
+	}
+}
+
+// Test vector inner product operator (pgvector <#>).
+func TestRender_Select_VectorInnerProduct(t *testing.T) {
+	instance := createVectorTestInstance(t)
+
+	result, err := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		Where(instance.C(instance.F("embedding"), astql.VectorInnerProduct, instance.P("query"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "id" FROM "documents" WHERE "embedding" <#> :query`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+// Test vector cosine distance operator (pgvector <=>).
+func TestRender_Select_VectorCosineDistance(t *testing.T) {
+	instance := createVectorTestInstance(t)
+
+	result, err := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		Where(instance.C(instance.F("embedding"), astql.VectorCosineDistance, instance.P("query"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "id" FROM "documents" WHERE "embedding" <=> :query`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+// Test vector L1/Manhattan distance operator (pgvector <+>).
+func TestRender_Select_VectorL1Distance(t *testing.T) {
+	instance := createVectorTestInstance(t)
+
+	result, err := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		Where(instance.C(instance.F("embedding"), astql.VectorL1Distance, instance.P("query"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "id" FROM "documents" WHERE "embedding" <+> :query`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}

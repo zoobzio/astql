@@ -21,4 +21,10 @@ const (
 	IsNotNull Operator = "IS NOT NULL"
 	EXISTS    Operator = "EXISTS"
 	NotExists Operator = "NOT EXISTS"
+
+	// Vector operators (pgvector).
+	VectorL2Distance     Operator = "<->"  // L2/Euclidean distance
+	VectorInnerProduct   Operator = "<#>"  // Negative inner product
+	VectorCosineDistance Operator = "<=>"  // Cosine distance
+	VectorL1Distance     Operator = "<+>"  // L1/Manhattan distance
 )

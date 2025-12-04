@@ -55,6 +55,12 @@ const (
 	IsNotNull = types.IsNotNull
 	EXISTS    = types.EXISTS
 	NotExists = types.NotExists
+
+	// Vector operators (pgvector).
+	VectorL2Distance     = types.VectorL2Distance
+	VectorInnerProduct   = types.VectorInnerProduct
+	VectorCosineDistance = types.VectorCosineDistance
+	VectorL1Distance     = types.VectorL1Distance
 )
 
 // ConditionItem represents either a single condition or a group of conditions.

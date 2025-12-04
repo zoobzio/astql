@@ -695,6 +695,14 @@ func renderOperator(op types.Operator) string {
 		return "EXISTS"
 	case types.NotExists:
 		return "NOT EXISTS"
+	case types.VectorL2Distance:
+		return "<->"
+	case types.VectorInnerProduct:
+		return "<#>"
+	case types.VectorCosineDistance:
+		return "<=>"
+	case types.VectorL1Distance:
+		return "<+>"
 	default:
 		return string(op)
 	}

@@ -597,6 +597,10 @@ func TestOperatorAccessors(t *testing.T) {
 		{"IsNotNull", instance.IsNotNull, astql.IsNotNull},
 		{"EXISTS", instance.EXISTS, astql.EXISTS},
 		{"NotExists", instance.NotExists, astql.NotExists},
+		{"VectorL2Distance", instance.VectorL2Distance, astql.VectorL2Distance},
+		{"VectorInnerProduct", instance.VectorInnerProduct, astql.VectorInnerProduct},
+		{"VectorCosineDistance", instance.VectorCosineDistance, astql.VectorCosineDistance},
+		{"VectorL1Distance", instance.VectorL1Distance, astql.VectorL1Distance},
 	}
 
 	for _, tt := range tests {

@@ -17,7 +17,7 @@ ASTQL is a **SQL injection-resistant** PostgreSQL query builder for Go that vali
 - ✅ **DBML Schema Integration**: Validates tables and fields against your DBML schema
 - ✅ **PostgreSQL Focused**: Optimized for PostgreSQL with full feature support
 - ✅ **Type Safety**: Instance-based API prevents direct struct creation
-- ✅ **Rich Query Support**: JOINs, subqueries, aggregates, CASE expressions, and more
+- ✅ **Rich Query Support**: JOINs, subqueries, aggregates, CASE expressions, pgvector, and more
 - ✅ **Parameterized Queries**: All user values use named parameters (`:param` style)
 - ✅ **Comprehensive Testing**: 85%+ test coverage with security-focused tests
 
@@ -252,6 +252,42 @@ result, _ := astql.Select(instance.T("products")).
 // FROM "products"
 ```
 
+### Vector Search (pgvector)
+
+ASTQL supports pgvector distance operators for similarity search:
+
+```go
+// Define schema with vector column
+documents := dbml.NewTable("documents")
+documents.AddColumn(dbml.NewColumn("id", "bigint"))
+documents.AddColumn(dbml.NewColumn("content", "text"))
+documents.AddColumn(dbml.NewColumn("embedding", "vector(1536)"))
+project.AddTable(documents)
+
+instance, _ := astql.NewFromDBML(project)
+
+// L2/Euclidean distance (<->)
+result, _ := astql.Select(instance.T("documents")).
+    Fields(instance.F("id"), instance.F("content")).
+    Where(instance.C(instance.F("embedding"), astql.VectorL2Distance, instance.P("query_embedding"))).
+    OrderBy(instance.F("embedding"), astql.ASC).
+    Limit(10).
+    Render()
+
+// SELECT "id", "content" FROM "documents"
+// WHERE "embedding" <-> :query_embedding
+// ORDER BY "embedding" ASC LIMIT 10
+```
+
+**Available vector operators:**
+
+| Operator | Constant | Description |
+|----------|----------|-------------|
+| `<->` | `VectorL2Distance` | L2/Euclidean distance |
+| `<#>` | `VectorInnerProduct` | Negative inner product |
+| `<=>` | `VectorCosineDistance` | Cosine distance |
+| `<+>` | `VectorL1Distance` | L1/Manhattan distance |
+
 ## Supported Features
 
 ### Query Types
@@ -282,6 +318,7 @@ result, _ := astql.Select(instance.T("products")).
 - LIMIT and OFFSET
 - Field comparisons (field-to-field conditions)
 - NULL checks (IS NULL, IS NOT NULL)
+- Vector search operators (pgvector: `<->`, `<#>`, `<=>`, `<+>`)
 
 ## Security Features
 

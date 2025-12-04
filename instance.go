@@ -490,3 +490,23 @@ func (*ASTQL) EXISTS() types.Operator {
 func (*ASTQL) NotExists() types.Operator {
 	return types.NotExists
 }
+
+// VectorL2Distance returns the vector L2/Euclidean distance operator constant (pgvector <->).
+func (*ASTQL) VectorL2Distance() types.Operator {
+	return types.VectorL2Distance
+}
+
+// VectorInnerProduct returns the vector negative inner product operator constant (pgvector <#>).
+func (*ASTQL) VectorInnerProduct() types.Operator {
+	return types.VectorInnerProduct
+}
+
+// VectorCosineDistance returns the vector cosine distance operator constant (pgvector <=>).
+func (*ASTQL) VectorCosineDistance() types.Operator {
+	return types.VectorCosineDistance
+}
+
+// VectorL1Distance returns the vector L1/Manhattan distance operator constant (pgvector <+>).
+func (*ASTQL) VectorL1Distance() types.Operator {
+	return types.VectorL1Distance
+}
