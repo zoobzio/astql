@@ -1296,3 +1296,74 @@ func TestRender_Select_OrderByExpr_CosineDistance(t *testing.T) {
 		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
 	}
 }
+
+// Test IN operator with parameter (renders as = ANY for PostgreSQL).
+func TestRender_Select_InWithParam(t *testing.T) {
+	instance := createRenderTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("id"), instance.F("username")).
+		Where(instance.C(instance.F("age"), astql.IN, instance.P("ages"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	// IN with param renders as = ANY(:param) for PostgreSQL array support
+	expected := `SELECT "id", "username" FROM "users" WHERE "age" = ANY(:ages)`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+
+	if len(result.RequiredParams) != 1 || result.RequiredParams[0] != "ages" {
+		t.Errorf("Expected params [ages], got %v", result.RequiredParams)
+	}
+}
+
+// Test NOT IN operator with parameter (renders as != ALL for PostgreSQL).
+func TestRender_Select_NotInWithParam(t *testing.T) {
+	instance := createRenderTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("id"), instance.F("username")).
+		Where(instance.C(instance.F("age"), astql.NotIn, instance.P("excluded_ages"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	// NOT IN with param renders as != ALL(:param) for PostgreSQL array support
+	expected := `SELECT "id", "username" FROM "users" WHERE "age" != ALL(:excluded_ages)`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+
+	if len(result.RequiredParams) != 1 || result.RequiredParams[0] != "excluded_ages" {
+		t.Errorf("Expected params [excluded_ages], got %v", result.RequiredParams)
+	}
+}
+
+// Test IN operator combined with other conditions.
+func TestRender_Select_InWithOtherConditions(t *testing.T) {
+	instance := createRenderTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("id")).
+		Where(instance.And(
+			instance.C(instance.F("active"), "=", instance.P("is_active")),
+			instance.C(instance.F("age"), astql.IN, instance.P("ages")),
+		)).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "id" FROM "users" WHERE ("active" = :is_active AND "age" = ANY(:ages))`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+
+	if len(result.RequiredParams) != 2 {
+		t.Errorf("Expected 2 params, got %d: %v", len(result.RequiredParams), result.RequiredParams)
+	}
+}

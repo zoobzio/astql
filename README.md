@@ -196,6 +196,31 @@ result, _ := astql.Select(instance.T("orders")).
 // HAVING "total" > :min_total
 ```
 
+### IN / NOT IN with Array Parameters
+
+```go
+// Filter users by a list of IDs
+result, _ := astql.Select(instance.T("users")).
+    Fields(instance.F("username"), instance.F("email")).
+    Where(instance.C(instance.F("id"), astql.IN, instance.P("user_ids"))).
+    Render()
+
+// SELECT "username", "email" FROM "users" WHERE "id" = ANY(:user_ids)
+
+// Exclude specific statuses
+result, _ := astql.Select(instance.T("orders")).
+    Fields(instance.F("id"), instance.F("total")).
+    Where(instance.C(instance.F("status"), astql.NotIn, instance.P("excluded_statuses"))).
+    Render()
+
+// SELECT "id", "total" FROM "orders" WHERE "status" != ALL(:excluded_statuses)
+```
+
+**Note:** When executing these queries with sqlx, wrap slice parameters with `pq.Array()`:
+```go
+params := map[string]any{"user_ids": pq.Array([]int{1, 2, 3})}
+```
+
 ### Subqueries
 
 ```go
@@ -311,7 +336,8 @@ result, _ := astql.Select(instance.T("documents")).
 - Math: ROUND, FLOOR, CEIL, ABS, POWER, SQRT
 
 ### Advanced Features
-- Subqueries (IN, NOT IN, EXISTS, NOT EXISTS)
+- IN / NOT IN (with array parameters or subqueries)
+- Subqueries (EXISTS, NOT EXISTS)
 - Nested subqueries (up to 3 levels)
 - GROUP BY and HAVING
 - ORDER BY with ASC/DESC

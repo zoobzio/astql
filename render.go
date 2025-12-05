@@ -545,6 +545,12 @@ func renderSimpleCondition(cond types.Condition, addParam func(types.Param) stri
 		return fmt.Sprintf("%s IS NULL", field)
 	case types.IsNotNull:
 		return fmt.Sprintf("%s IS NOT NULL", field)
+	case types.IN:
+		// PostgreSQL: field = ANY(:param) for array parameters
+		return fmt.Sprintf("%s = ANY(%s)", field, addParam(cond.Value))
+	case types.NotIn:
+		// PostgreSQL: field != ALL(:param) for array parameters
+		return fmt.Sprintf("%s != ALL(%s)", field, addParam(cond.Value))
 	default:
 		return fmt.Sprintf("%s %s %s", field, op, addParam(cond.Value))
 	}
