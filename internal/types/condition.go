@@ -29,6 +29,33 @@ type ConditionGroup struct {
 	Conditions []ConditionItem
 }
 
+// AggregateCondition represents a HAVING condition on an aggregate function.
+// Used for conditions like: HAVING COUNT(*) > :min_count or HAVING SUM("amount") >= :threshold
+//
+// Examples:
+//
+//	HAVING COUNT(*) > 10:
+//	  AggregateCondition{Func: AggCountField, Field: nil, Operator: GT, Value: param}
+//
+//	HAVING SUM("amount") >= :threshold:
+//	  AggregateCondition{Func: AggSum, Field: &amountField, Operator: GE, Value: param}
+type AggregateCondition struct {
+	Func     AggregateFunc // SUM, AVG, MIN, MAX, COUNT, COUNT_DISTINCT
+	Field    *Field        // nil for COUNT(*), otherwise the field to aggregate
+	Operator Operator
+	Value    Param
+}
+
+// Example: field BETWEEN :low AND :high.
+type BetweenCondition struct {
+	Field   Field
+	Low     Param
+	High    Param
+	Negated bool // true for NOT BETWEEN
+}
+
 // Implement ConditionItem interface.
-func (Condition) IsConditionItem()      {}
-func (ConditionGroup) IsConditionItem() {}
+func (Condition) IsConditionItem()          {}
+func (ConditionGroup) IsConditionItem()     {}
+func (AggregateCondition) IsConditionItem() {}
+func (BetweenCondition) IsConditionItem()   {}

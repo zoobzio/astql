@@ -40,13 +40,6 @@ func NewFromDBML(project *dbml.Project) (*ASTQL, error) {
 	return a, nil
 }
 
-// LoadFromDBML loads a DBML file and creates an ASTQL instance.
-// Note: This requires a DBML parser to be implemented.
-// For now, use NewFromDBML with a programmatically created project.
-func LoadFromDBML(_ string) (*ASTQL, error) {
-	return nil, fmt.Errorf("LoadFromDBML not yet implemented - use NewFromDBML instead")
-}
-
 // validateTable checks if a table exists in the schema.
 func (a *ASTQL) validateTable(name string) error {
 	if _, ok := a.tables[name]; !ok {
@@ -247,6 +240,33 @@ func (a *ASTQL) TryC(field types.Field, op types.Operator, param types.Param) (t
 // C creates a validated condition.
 func (a *ASTQL) C(field types.Field, op types.Operator, param types.Param) types.Condition {
 	c, err := a.TryC(field, op, param)
+	if err != nil {
+		panic(err)
+	}
+	return c
+}
+
+// TryAggC creates a validated aggregate condition for HAVING clauses.
+// Use nil for field to create COUNT(*).
+func (a *ASTQL) TryAggC(aggFunc types.AggregateFunc, field *types.Field, op types.Operator, param types.Param) (types.AggregateCondition, error) {
+	// Validate field if provided
+	if field != nil {
+		if err := a.validateField(field.Name); err != nil {
+			return types.AggregateCondition{}, err
+		}
+	}
+	return types.AggregateCondition{
+		Func:     aggFunc,
+		Field:    field,
+		Operator: op,
+		Value:    param,
+	}, nil
+}
+
+// AggC creates a validated aggregate condition for HAVING clauses.
+// Use nil for field to create COUNT(*).
+func (a *ASTQL) AggC(aggFunc types.AggregateFunc, field *types.Field, op types.Operator, param types.Param) types.AggregateCondition {
+	c, err := a.TryAggC(aggFunc, field, op, param)
 	if err != nil {
 		panic(err)
 	}
@@ -509,4 +529,49 @@ func (*ASTQL) VectorCosineDistance() types.Operator {
 // VectorL1Distance returns the vector L1/Manhattan distance operator constant (pgvector <+>).
 func (*ASTQL) VectorL1Distance() types.Operator {
 	return types.VectorL1Distance
+}
+
+// ILIKE returns the case-insensitive LIKE operator constant (PostgreSQL).
+func (*ASTQL) ILIKE() types.Operator {
+	return types.ILIKE
+}
+
+// NotILike returns the NOT ILIKE operator constant (PostgreSQL).
+func (*ASTQL) NotILike() types.Operator {
+	return types.NotILike
+}
+
+// RegexMatch returns the regex match operator constant (PostgreSQL ~).
+func (*ASTQL) RegexMatch() types.Operator {
+	return types.RegexMatch
+}
+
+// RegexIMatch returns the case-insensitive regex match operator constant (PostgreSQL ~*).
+func (*ASTQL) RegexIMatch() types.Operator {
+	return types.RegexIMatch
+}
+
+// NotRegexMatch returns the regex non-match operator constant (PostgreSQL !~).
+func (*ASTQL) NotRegexMatch() types.Operator {
+	return types.NotRegexMatch
+}
+
+// NotRegexIMatch returns the case-insensitive regex non-match operator constant (PostgreSQL !~*).
+func (*ASTQL) NotRegexIMatch() types.Operator {
+	return types.NotRegexIMatch
+}
+
+// ArrayContains returns the array contains operator constant (PostgreSQL @>).
+func (*ASTQL) ArrayContains() types.Operator {
+	return types.ArrayContains
+}
+
+// ArrayContainedBy returns the array contained by operator constant (PostgreSQL <@).
+func (*ASTQL) ArrayContainedBy() types.Operator {
+	return types.ArrayContainedBy
+}
+
+// ArrayOverlap returns the array overlap operator constant (PostgreSQL &&).
+func (*ASTQL) ArrayOverlap() types.Operator {
+	return types.ArrayOverlap
 }

@@ -524,3 +524,531 @@ func TestJoin(t *testing.T) {
 		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
 	}
 }
+
+// =============================================================================
+// DISTINCT ON Tests
+// =============================================================================
+
+func TestDistinctOn_Single(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	result, err := astql.Select(instance.T("posts")).
+		DistinctOn(instance.F("user_id")).
+		Fields(instance.F("user_id"), instance.F("title")).
+		OrderBy(instance.F("user_id"), types.ASC).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT DISTINCT ON ("user_id") "user_id", "title" FROM "posts" ORDER BY "user_id" ASC`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestDistinctOn_Multiple(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	result, err := astql.Select(instance.T("posts")).
+		DistinctOn(instance.F("user_id"), instance.F("title")).
+		Fields(instance.F("user_id"), instance.F("title")).
+		OrderBy(instance.F("user_id"), types.ASC).
+		OrderBy(instance.F("title"), types.ASC).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT DISTINCT ON ("user_id", "title") "user_id", "title" FROM "posts" ORDER BY "user_id" ASC, "title" ASC`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+// =============================================================================
+// FOR UPDATE/FOR SHARE Tests
+// =============================================================================
+
+func TestForUpdate(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("id")).
+		Where(instance.C(instance.F("id"), "=", instance.P("user_id"))).
+		ForUpdate().
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "id" FROM "users" WHERE "id" = :user_id FOR UPDATE`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestForNoKeyUpdate(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		ForNoKeyUpdate().
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT * FROM "users" FOR NO KEY UPDATE`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestForShare(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		ForShare().
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT * FROM "users" FOR SHARE`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestForKeyShare(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		ForKeyShare().
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT * FROM "users" FOR KEY SHARE`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+// =============================================================================
+// NULLS FIRST/LAST Tests
+// =============================================================================
+
+func TestOrderByNulls_First(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		OrderByNulls(instance.F("age"), types.ASC, astql.NullsFirst).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT * FROM "users" ORDER BY "age" ASC NULLS FIRST`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestOrderByNulls_Last(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		OrderByNulls(instance.F("age"), types.DESC, astql.NullsLast).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT * FROM "users" ORDER BY "age" DESC NULLS LAST`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+// =============================================================================
+// FULL OUTER JOIN Test
+// =============================================================================
+
+func TestFullOuterJoin(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("username")).
+		FullOuterJoin(
+			instance.T("posts"),
+			astql.CF(instance.F("id"), "=", instance.F("user_id")),
+		).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "username" FROM "users" FULL OUTER JOIN "posts" ON "id" = "user_id"`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+// =============================================================================
+// Compound Query (UNION/INTERSECT/EXCEPT) Tests
+// =============================================================================
+
+func TestCompoundQuery_Union(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).
+		Fields(instance.F("id"), instance.F("username")).
+		Where(instance.C(instance.F("age"), ">", instance.P("min_age")))
+
+	query2 := astql.Select(instance.T("users")).
+		Fields(instance.F("id"), instance.F("username")).
+		Where(instance.C(instance.F("email"), "LIKE", instance.P("pattern")))
+
+	result, err := astql.Union(query1, query2).Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+
+	// Params should be namespaced
+	hasQ0 := false
+	hasQ1 := false
+	for _, p := range result.RequiredParams {
+		if p[:3] == "q0_" {
+			hasQ0 = true
+		}
+		if p[:3] == "q1_" {
+			hasQ1 = true
+		}
+	}
+	if !hasQ0 || !hasQ1 {
+		t.Errorf("Expected namespaced params (q0_, q1_), got: %v", result.RequiredParams)
+	}
+}
+
+func TestCompoundQuery_UnionAll(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	result, err := astql.UnionAll(query1, query2).Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+func TestCompoundQuery_Intersect(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	result, err := astql.Intersect(query1, query2).Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+func TestCompoundQuery_Except(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	result, err := astql.Except(query1, query2).Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+func TestCompoundQuery_IntersectAll(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	result, err := astql.IntersectAll(query1, query2).Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+func TestCompoundQuery_ExceptAll(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	result, err := astql.ExceptAll(query1, query2).Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+func TestCompoundQuery_WithOrderByLimit(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"), instance.F("username"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"), instance.F("username"))
+
+	result, err := astql.Union(query1, query2).
+		OrderBy(instance.F("username"), types.ASC).
+		Limit(10).
+		Offset(5).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+func TestCompoundQuery_Chain(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query3 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	result, err := astql.Union(query1, query2).
+		Intersect(query3).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+// Test Builder.Union method (not top-level Union function).
+func TestBuilder_Union(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	result, err := query1.Union(query2).Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+func TestBuilder_UnionAll(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	result, err := query1.UnionAll(query2).Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+func TestBuilder_Intersect(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	result, err := query1.Intersect(query2).Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+func TestBuilder_IntersectAll(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	result, err := query1.IntersectAll(query2).Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+func TestBuilder_Except(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	result, err := query1.Except(query2).Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+func TestBuilder_ExceptAll(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	result, err := query1.ExceptAll(query2).Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+// Test CompoundBuilder chained methods.
+func TestCompoundBuilder_Union(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query3 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	result, err := astql.Intersect(query1, query2).Union(query3).Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+func TestCompoundBuilder_UnionAll(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query3 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	result, err := astql.Intersect(query1, query2).UnionAll(query3).Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+func TestCompoundBuilder_IntersectAll(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query3 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	result, err := astql.Union(query1, query2).IntersectAll(query3).Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+func TestCompoundBuilder_Except(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query3 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	result, err := astql.Union(query1, query2).Except(query3).Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+func TestCompoundBuilder_ExceptAll(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query3 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	result, err := astql.Union(query1, query2).ExceptAll(query3).Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}
+
+func TestCompoundBuilder_MustBuild(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	// Should not panic
+	compound := astql.Union(query1, query2).MustBuild()
+	if compound == nil {
+		t.Error("Expected non-nil compound query")
+	}
+}
+
+func TestCompoundBuilder_MustRender(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
+
+	// Should not panic
+	result := astql.Union(query1, query2).MustRender()
+	if result.SQL == "" {
+		t.Error("Expected non-empty SQL")
+	}
+}

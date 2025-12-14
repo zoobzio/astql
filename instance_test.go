@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/zoobzio/astql"
+	"github.com/zoobzio/astql/internal/types"
 	"github.com/zoobzio/dbml"
 )
 
@@ -263,6 +264,50 @@ func TestTryOr(t *testing.T) {
 	}
 }
 
+func TestTryOr_NoConditions(t *testing.T) {
+	instance := createTestInstance(t)
+
+	_, err := instance.TryOr()
+	if err == nil {
+		t.Fatal("Expected error for OR with no conditions")
+	}
+}
+
+func TestTryC_InvalidField(t *testing.T) {
+	instance := createTestInstance(t)
+
+	// Create a field that doesn't exist in the schema
+	invalidField := types.Field{Name: "nonexistent_field"}
+	param := instance.P("value")
+
+	_, err := instance.TryC(invalidField, "=", param)
+	if err == nil {
+		t.Fatal("Expected error for invalid field")
+	}
+}
+
+func TestTryNull_InvalidField(t *testing.T) {
+	instance := createTestInstance(t)
+
+	invalidField := types.Field{Name: "nonexistent_field"}
+
+	_, err := instance.TryNull(invalidField)
+	if err == nil {
+		t.Fatal("Expected error for invalid field")
+	}
+}
+
+func TestTryNotNull_InvalidField(t *testing.T) {
+	instance := createTestInstance(t)
+
+	invalidField := types.Field{Name: "nonexistent_field"}
+
+	_, err := instance.TryNotNull(invalidField)
+	if err == nil {
+		t.Fatal("Expected error for invalid field")
+	}
+}
+
 func TestWithTable(t *testing.T) {
 	instance := createTestInstance(t)
 
@@ -329,18 +374,6 @@ func TestGetInstance(t *testing.T) {
 
 	if retrieved != instance {
 		t.Error("GetInstance should return the same instance")
-	}
-}
-
-// Test LoadFromDBML (not implemented).
-func TestLoadFromDBML(t *testing.T) {
-	_, err := astql.LoadFromDBML("test.dbml")
-
-	if err == nil {
-		t.Error("Expected error for unimplemented LoadFromDBML")
-	}
-	if err.Error() != "LoadFromDBML not yet implemented - use NewFromDBML instead" {
-		t.Errorf("Unexpected error message: %v", err)
 	}
 }
 
@@ -593,10 +626,19 @@ func TestOperatorAccessors(t *testing.T) {
 		{"NotIn", instance.NotIn, astql.NotIn},
 		{"LIKE", instance.LIKE, astql.LIKE},
 		{"NotLike", instance.NotLike, astql.NotLike},
+		{"ILIKE", instance.ILIKE, astql.ILIKE},
+		{"NotILike", instance.NotILike, astql.NotILike},
 		{"IsNull", instance.IsNull, astql.IsNull},
 		{"IsNotNull", instance.IsNotNull, astql.IsNotNull},
 		{"EXISTS", instance.EXISTS, astql.EXISTS},
 		{"NotExists", instance.NotExists, astql.NotExists},
+		{"RegexMatch", instance.RegexMatch, astql.RegexMatch},
+		{"RegexIMatch", instance.RegexIMatch, astql.RegexIMatch},
+		{"NotRegexMatch", instance.NotRegexMatch, astql.NotRegexMatch},
+		{"NotRegexIMatch", instance.NotRegexIMatch, astql.NotRegexIMatch},
+		{"ArrayContains", instance.ArrayContains, astql.ArrayContains},
+		{"ArrayContainedBy", instance.ArrayContainedBy, astql.ArrayContainedBy},
+		{"ArrayOverlap", instance.ArrayOverlap, astql.ArrayOverlap},
 		{"VectorL2Distance", instance.VectorL2Distance, astql.VectorL2Distance},
 		{"VectorInnerProduct", instance.VectorInnerProduct, astql.VectorInnerProduct},
 		{"VectorCosineDistance", instance.VectorCosineDistance, astql.VectorCosineDistance},

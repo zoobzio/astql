@@ -56,6 +56,88 @@ func CountDistinct(field types.Field) types.FieldExpression {
 	}
 }
 
+// CountStar creates a COUNT(*) aggregate expression for use in SELECT.
+func CountStar() types.FieldExpression {
+	return types.FieldExpression{
+		Aggregate: types.AggCountField,
+		// Field is zero value (empty), which renders as COUNT(*)
+	}
+}
+
+// Example: SumFilter(field, condition) -> SUM("field") FILTER (WHERE condition).
+func SumFilter(field types.Field, filter types.ConditionItem) types.FieldExpression {
+	return types.FieldExpression{
+		Field:     field,
+		Aggregate: types.AggSum,
+		Filter:    filter,
+	}
+}
+
+// AvgFilter creates an AVG aggregate with a FILTER clause.
+func AvgFilter(field types.Field, filter types.ConditionItem) types.FieldExpression {
+	return types.FieldExpression{
+		Field:     field,
+		Aggregate: types.AggAvg,
+		Filter:    filter,
+	}
+}
+
+// MinFilter creates a MIN aggregate with a FILTER clause.
+func MinFilter(field types.Field, filter types.ConditionItem) types.FieldExpression {
+	return types.FieldExpression{
+		Field:     field,
+		Aggregate: types.AggMin,
+		Filter:    filter,
+	}
+}
+
+// MaxFilter creates a MAX aggregate with a FILTER clause.
+func MaxFilter(field types.Field, filter types.ConditionItem) types.FieldExpression {
+	return types.FieldExpression{
+		Field:     field,
+		Aggregate: types.AggMax,
+		Filter:    filter,
+	}
+}
+
+// CountFieldFilter creates a COUNT(field) aggregate with a FILTER clause.
+func CountFieldFilter(field types.Field, filter types.ConditionItem) types.FieldExpression {
+	return types.FieldExpression{
+		Field:     field,
+		Aggregate: types.AggCountField,
+		Filter:    filter,
+	}
+}
+
+// CountDistinctFilter creates a COUNT(DISTINCT field) aggregate with a FILTER clause.
+func CountDistinctFilter(field types.Field, filter types.ConditionItem) types.FieldExpression {
+	return types.FieldExpression{
+		Field:     field,
+		Aggregate: types.AggCountDistinct,
+		Filter:    filter,
+	}
+}
+
+// Example: Between(field, low, high) -> field BETWEEN :low AND :high.
+func Between(field types.Field, low, high types.Param) types.BetweenCondition {
+	return types.BetweenCondition{
+		Field:   field,
+		Low:     low,
+		High:    high,
+		Negated: false,
+	}
+}
+
+// Example: NotBetween(field, low, high) -> field NOT BETWEEN :low AND :high.
+func NotBetween(field types.Field, low, high types.Param) types.BetweenCondition {
+	return types.BetweenCondition{
+		Field:   field,
+		Low:     low,
+		High:    high,
+		Negated: true,
+	}
+}
+
 // CF creates a field comparison condition.
 func CF(left types.Field, op types.Operator, right types.Field) types.FieldComparison {
 	return types.FieldComparison{
@@ -237,6 +319,258 @@ func Sqrt(field types.Field) types.FieldExpression {
 	}
 }
 
+// Example: Cast(field, CastText) -> CAST("field" AS TEXT).
+func Cast(field types.Field, castType types.CastType) types.FieldExpression {
+	return types.FieldExpression{
+		Cast: &types.CastExpression{
+			Field:    field,
+			CastType: castType,
+		},
+	}
+}
+
+// Window functions
+
+// WindowBuilder provides a fluent API for building window function expressions.
+type WindowBuilder struct {
+	expr *types.WindowExpression
+}
+
+// Window creates a new WindowSpec for use with window functions.
+func Window() *WindowSpecBuilder {
+	return &WindowSpecBuilder{
+		spec: &types.WindowSpec{},
+	}
+}
+
+// WindowSpecBuilder provides a fluent API for building window specifications.
+type WindowSpecBuilder struct {
+	spec *types.WindowSpec
+}
+
+// PartitionBy adds PARTITION BY fields to the window specification.
+func (wsb *WindowSpecBuilder) PartitionBy(fields ...types.Field) *WindowSpecBuilder {
+	wsb.spec.PartitionBy = fields
+	return wsb
+}
+
+// OrderBy adds ORDER BY to the window specification.
+func (wsb *WindowSpecBuilder) OrderBy(field types.Field, direction types.Direction) *WindowSpecBuilder {
+	wsb.spec.OrderBy = append(wsb.spec.OrderBy, types.OrderBy{
+		Field:     field,
+		Direction: direction,
+	})
+	return wsb
+}
+
+// OrderByNulls adds ORDER BY with NULLS ordering to the window specification.
+func (wsb *WindowSpecBuilder) OrderByNulls(field types.Field, direction types.Direction, nulls types.NullsOrdering) *WindowSpecBuilder {
+	wsb.spec.OrderBy = append(wsb.spec.OrderBy, types.OrderBy{
+		Field:     field,
+		Direction: direction,
+		Nulls:     nulls,
+	})
+	return wsb
+}
+
+// Rows sets the frame clause with ROWS BETWEEN.
+func (wsb *WindowSpecBuilder) Rows(start, end types.FrameBound) *WindowSpecBuilder {
+	wsb.spec.FrameStart = start
+	wsb.spec.FrameEnd = end
+	return wsb
+}
+
+// Build returns the WindowSpec.
+func (wsb *WindowSpecBuilder) Build() types.WindowSpec {
+	return *wsb.spec
+}
+
+// RowNumber creates a ROW_NUMBER() window function.
+func RowNumber() *WindowBuilder {
+	return &WindowBuilder{
+		expr: &types.WindowExpression{
+			Function: types.WinRowNumber,
+		},
+	}
+}
+
+// Rank creates a RANK() window function.
+func Rank() *WindowBuilder {
+	return &WindowBuilder{
+		expr: &types.WindowExpression{
+			Function: types.WinRank,
+		},
+	}
+}
+
+// DenseRank creates a DENSE_RANK() window function.
+func DenseRank() *WindowBuilder {
+	return &WindowBuilder{
+		expr: &types.WindowExpression{
+			Function: types.WinDenseRank,
+		},
+	}
+}
+
+// Ntile creates an NTILE(n) window function.
+func Ntile(n types.Param) *WindowBuilder {
+	return &WindowBuilder{
+		expr: &types.WindowExpression{
+			Function:   types.WinNtile,
+			NtileParam: &n,
+		},
+	}
+}
+
+// Lag creates a LAG(field, offset, default) window function.
+func Lag(field types.Field, offset types.Param, defaultVal ...types.Param) *WindowBuilder {
+	expr := &types.WindowExpression{
+		Function:  types.WinLag,
+		Field:     &field,
+		LagOffset: &offset,
+	}
+	if len(defaultVal) > 0 {
+		expr.LagDefault = &defaultVal[0]
+	}
+	return &WindowBuilder{expr: expr}
+}
+
+// Lead creates a LEAD(field, offset, default) window function.
+func Lead(field types.Field, offset types.Param, defaultVal ...types.Param) *WindowBuilder {
+	expr := &types.WindowExpression{
+		Function:  types.WinLead,
+		Field:     &field,
+		LagOffset: &offset,
+	}
+	if len(defaultVal) > 0 {
+		expr.LagDefault = &defaultVal[0]
+	}
+	return &WindowBuilder{expr: expr}
+}
+
+// FirstValue creates a FIRST_VALUE(field) window function.
+func FirstValue(field types.Field) *WindowBuilder {
+	return &WindowBuilder{
+		expr: &types.WindowExpression{
+			Function: types.WinFirstValue,
+			Field:    &field,
+		},
+	}
+}
+
+// LastValue creates a LAST_VALUE(field) window function.
+func LastValue(field types.Field) *WindowBuilder {
+	return &WindowBuilder{
+		expr: &types.WindowExpression{
+			Function: types.WinLastValue,
+			Field:    &field,
+		},
+	}
+}
+
+// SumOver creates a SUM() OVER window function.
+func SumOver(field types.Field) *WindowBuilder {
+	return &WindowBuilder{
+		expr: &types.WindowExpression{
+			Aggregate: types.AggSum,
+			Field:     &field,
+		},
+	}
+}
+
+// AvgOver creates an AVG() OVER window function.
+func AvgOver(field types.Field) *WindowBuilder {
+	return &WindowBuilder{
+		expr: &types.WindowExpression{
+			Aggregate: types.AggAvg,
+			Field:     &field,
+		},
+	}
+}
+
+// CountOver creates a COUNT(field) OVER window function.
+func CountOver(field ...types.Field) *WindowBuilder {
+	expr := &types.WindowExpression{
+		Aggregate: types.AggCountField,
+	}
+	if len(field) > 0 {
+		expr.Field = &field[0]
+	}
+	return &WindowBuilder{expr: expr}
+}
+
+// MinOver creates a MIN() OVER window function.
+func MinOver(field types.Field) *WindowBuilder {
+	return &WindowBuilder{
+		expr: &types.WindowExpression{
+			Aggregate: types.AggMin,
+			Field:     &field,
+		},
+	}
+}
+
+// MaxOver creates a MAX() OVER window function.
+func MaxOver(field types.Field) *WindowBuilder {
+	return &WindowBuilder{
+		expr: &types.WindowExpression{
+			Aggregate: types.AggMax,
+			Field:     &field,
+		},
+	}
+}
+
+// Over sets the window specification for a window function.
+func (wb *WindowBuilder) Over(spec types.WindowSpec) *WindowBuilder {
+	wb.expr.Window = spec
+	return wb
+}
+
+// OverBuilder sets the window specification from a builder.
+func (wb *WindowBuilder) OverBuilder(builder *WindowSpecBuilder) *WindowBuilder {
+	wb.expr.Window = *builder.spec
+	return wb
+}
+
+// PartitionBy adds PARTITION BY fields (convenience method).
+func (wb *WindowBuilder) PartitionBy(fields ...types.Field) *WindowBuilder {
+	wb.expr.Window.PartitionBy = fields
+	return wb
+}
+
+// OrderBy adds ORDER BY to the window specification (convenience method).
+func (wb *WindowBuilder) OrderBy(field types.Field, direction types.Direction) *WindowBuilder {
+	wb.expr.Window.OrderBy = append(wb.expr.Window.OrderBy, types.OrderBy{
+		Field:     field,
+		Direction: direction,
+	})
+	return wb
+}
+
+// Frame sets the frame clause with ROWS BETWEEN (convenience method).
+func (wb *WindowBuilder) Frame(start, end types.FrameBound) *WindowBuilder {
+	wb.expr.Window.FrameStart = start
+	wb.expr.Window.FrameEnd = end
+	return wb
+}
+
+// As adds an alias to the window function and returns a FieldExpression.
+func (wb *WindowBuilder) As(alias string) types.FieldExpression {
+	if !isValidSQLIdentifier(alias) {
+		panic(fmt.Errorf("invalid alias '%s': must be alphanumeric/underscore, start with letter/underscore, and contain no SQL keywords", alias))
+	}
+	return types.FieldExpression{
+		Window: wb.expr,
+		Alias:  alias,
+	}
+}
+
+// Build returns the FieldExpression without an alias.
+func (wb *WindowBuilder) Build() types.FieldExpression {
+	return types.FieldExpression{
+		Window: wb.expr,
+	}
+}
+
 // As adds an alias to a field expression.
 func As(expr types.FieldExpression, alias string) types.FieldExpression {
 	if !isValidSQLIdentifier(alias) {
@@ -244,4 +578,77 @@ func As(expr types.FieldExpression, alias string) types.FieldExpression {
 	}
 	expr.Alias = alias
 	return expr
+}
+
+// Aggregate HAVING condition helpers.
+// These create AggregateCondition for use with Builder.HavingAgg().
+
+// Example: HavingCount(GT, param) -> HAVING COUNT(*) > :param.
+func HavingCount(op types.Operator, value types.Param) types.AggregateCondition {
+	return types.AggregateCondition{
+		Func:     types.AggCountField,
+		Field:    nil, // COUNT(*)
+		Operator: op,
+		Value:    value,
+	}
+}
+
+// Example: HavingCountField(field, GT, param) -> HAVING COUNT("field") > :param.
+func HavingCountField(field types.Field, op types.Operator, value types.Param) types.AggregateCondition {
+	return types.AggregateCondition{
+		Func:     types.AggCountField,
+		Field:    &field,
+		Operator: op,
+		Value:    value,
+	}
+}
+
+// HavingCountDistinct creates a HAVING COUNT(DISTINCT field) condition.
+func HavingCountDistinct(field types.Field, op types.Operator, value types.Param) types.AggregateCondition {
+	return types.AggregateCondition{
+		Func:     types.AggCountDistinct,
+		Field:    &field,
+		Operator: op,
+		Value:    value,
+	}
+}
+
+// Example: HavingSum(field, GE, param) -> HAVING SUM("field") >= :param.
+func HavingSum(field types.Field, op types.Operator, value types.Param) types.AggregateCondition {
+	return types.AggregateCondition{
+		Func:     types.AggSum,
+		Field:    &field,
+		Operator: op,
+		Value:    value,
+	}
+}
+
+// Example: HavingAvg(field, LT, param) -> HAVING AVG("field") < :param.
+func HavingAvg(field types.Field, op types.Operator, value types.Param) types.AggregateCondition {
+	return types.AggregateCondition{
+		Func:     types.AggAvg,
+		Field:    &field,
+		Operator: op,
+		Value:    value,
+	}
+}
+
+// HavingMin creates a HAVING MIN(field) condition.
+func HavingMin(field types.Field, op types.Operator, value types.Param) types.AggregateCondition {
+	return types.AggregateCondition{
+		Func:     types.AggMin,
+		Field:    &field,
+		Operator: op,
+		Value:    value,
+	}
+}
+
+// HavingMax creates a HAVING MAX(field) condition.
+func HavingMax(field types.Field, op types.Operator, value types.Param) types.AggregateCondition {
+	return types.AggregateCondition{
+		Func:     types.AggMax,
+		Field:    &field,
+		Operator: op,
+		Value:    value,
+	}
 }

@@ -527,6 +527,69 @@ func TestRender_Count_WithWhere(t *testing.T) {
 	}
 }
 
+func TestRender_Count_WithInnerJoin(t *testing.T) {
+	instance := createRenderTestInstance(t)
+
+	result, err := astql.Count(instance.T("users", "u")).
+		InnerJoin(
+			instance.T("posts", "p"),
+			astql.CF(
+				instance.WithTable(instance.F("id"), "u"),
+				"=",
+				instance.WithTable(instance.F("user_id"), "p"),
+			),
+		).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT COUNT(*) FROM "users" u INNER JOIN "posts" p ON u."id" = p."user_id"`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestRender_Count_WithCrossJoin(t *testing.T) {
+	instance := createRenderTestInstance(t)
+
+	result, err := astql.Count(instance.T("users")).
+		CrossJoin(instance.T("posts")).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT COUNT(*) FROM "users" CROSS JOIN "posts"`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestRender_Count_WithJoinAndWhere(t *testing.T) {
+	instance := createRenderTestInstance(t)
+
+	result, err := astql.Count(instance.T("users", "u")).
+		LeftJoin(
+			instance.T("posts", "p"),
+			astql.CF(
+				instance.WithTable(instance.F("id"), "u"),
+				"=",
+				instance.WithTable(instance.F("user_id"), "p"),
+			),
+		).
+		Where(instance.C(instance.WithTable(instance.F("active"), "u"), "=", instance.P("is_active"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT COUNT(*) FROM "users" u LEFT JOIN "posts" p ON u."id" = p."user_id" WHERE u."active" = :is_active`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
 // Test aggregate functions.
 func TestRender_Select_Aggregates(t *testing.T) {
 	instance := createRenderTestInstance(t)
@@ -597,6 +660,145 @@ func TestRender_Select_GroupByHaving(t *testing.T) {
 	}
 
 	expected := `SELECT "active", COUNT("id") FROM "users" GROUP BY "active" HAVING "active" = :is_active`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestRender_Select_HavingAgg_Count(t *testing.T) {
+	instance := createRenderTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("active")).
+		SelectExpr(astql.CountField(instance.F("id"))).
+		GroupBy(instance.F("active")).
+		HavingAgg(astql.HavingCount(astql.GT, instance.P("min_count"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "active", COUNT("id") FROM "users" GROUP BY "active" HAVING COUNT(*) > :min_count`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestRender_Select_HavingAgg_Sum(t *testing.T) {
+	instance := createRenderTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("active")).
+		SelectExpr(astql.Sum(instance.F("age"))).
+		GroupBy(instance.F("active")).
+		HavingAgg(astql.HavingSum(instance.F("age"), astql.GE, instance.P("min_total"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "active", SUM("age") FROM "users" GROUP BY "active" HAVING SUM("age") >= :min_total`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestRender_Select_HavingAgg_Avg(t *testing.T) {
+	instance := createRenderTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("active")).
+		SelectExpr(astql.Avg(instance.F("age"))).
+		GroupBy(instance.F("active")).
+		HavingAgg(astql.HavingAvg(instance.F("age"), astql.LT, instance.P("max_avg"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "active", AVG("age") FROM "users" GROUP BY "active" HAVING AVG("age") < :max_avg`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestRender_Select_HavingAgg_CountField(t *testing.T) {
+	instance := createRenderTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("active")).
+		SelectExpr(astql.CountField(instance.F("id"))).
+		GroupBy(instance.F("active")).
+		HavingAgg(astql.HavingCountField(instance.F("id"), astql.GT, instance.P("min_count"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "active", COUNT("id") FROM "users" GROUP BY "active" HAVING COUNT("id") > :min_count`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestRender_Select_HavingAgg_CountDistinct(t *testing.T) {
+	instance := createRenderTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("active")).
+		SelectExpr(astql.CountDistinct(instance.F("email"))).
+		GroupBy(instance.F("active")).
+		HavingAgg(astql.HavingCountDistinct(instance.F("email"), astql.GE, instance.P("min_unique"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "active", COUNT(DISTINCT "email") FROM "users" GROUP BY "active" HAVING COUNT(DISTINCT "email") >= :min_unique`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestRender_Select_HavingAgg_MinMax(t *testing.T) {
+	instance := createRenderTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("active")).
+		SelectExpr(astql.Min(instance.F("age"))).
+		SelectExpr(astql.Max(instance.F("age"))).
+		GroupBy(instance.F("active")).
+		HavingAgg(
+			astql.HavingMin(instance.F("age"), astql.GE, instance.P("min_age")),
+			astql.HavingMax(instance.F("age"), astql.LE, instance.P("max_age")),
+		).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "active", MIN("age"), MAX("age") FROM "users" GROUP BY "active" HAVING MIN("age") >= :min_age AND MAX("age") <= :max_age`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestRender_Select_HavingAgg_MixedConditions(t *testing.T) {
+	instance := createRenderTestInstance(t)
+
+	// Mix simple HAVING with aggregate HAVING
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("active")).
+		SelectExpr(astql.CountField(instance.F("id"))).
+		GroupBy(instance.F("active")).
+		Having(instance.C(instance.F("active"), "=", instance.P("is_active"))).
+		HavingAgg(astql.HavingCount(astql.GT, instance.P("min_count"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "active", COUNT("id") FROM "users" GROUP BY "active" HAVING "active" = :is_active AND COUNT(*) > :min_count`
 	if result.SQL != expected {
 		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
 	}

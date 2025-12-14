@@ -679,3 +679,849 @@ func contains(slice []string, str string) bool {
 	}
 	return false
 }
+
+// =============================================================================
+// BETWEEN Expression Tests
+// =============================================================================
+
+func createBetweenTestInstance(t *testing.T) *astql.ASTQL {
+	t.Helper()
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("id", "bigint"))
+	users.AddColumn(dbml.NewColumn("age", "int"))
+	users.AddColumn(dbml.NewColumn("score", "numeric"))
+	project.AddTable(users)
+
+	instance, err := astql.NewFromDBML(project)
+	if err != nil {
+		t.Fatalf("Failed to create instance: %v", err)
+	}
+	return instance
+}
+
+func TestBetween_Basic(t *testing.T) {
+	instance := createBetweenTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		Where(astql.Between(instance.F("age"), instance.P("min_age"), instance.P("max_age"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT * FROM "users" WHERE "age" BETWEEN :min_age AND :max_age`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+
+	if len(result.RequiredParams) != 2 {
+		t.Errorf("Expected 2 params, got %d", len(result.RequiredParams))
+	}
+}
+
+func TestNotBetween_Basic(t *testing.T) {
+	instance := createBetweenTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		Where(astql.NotBetween(instance.F("score"), instance.P("min"), instance.P("max"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT * FROM "users" WHERE "score" NOT BETWEEN :min AND :max`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestBetween_WithOtherConditions(t *testing.T) {
+	instance := createBetweenTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		Where(instance.And(
+			astql.Between(instance.F("age"), instance.P("min_age"), instance.P("max_age")),
+			instance.C(instance.F("score"), ">", instance.P("min_score")),
+		)).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "BETWEEN") {
+		t.Errorf("Expected BETWEEN in SQL: %s", result.SQL)
+	}
+	if len(result.RequiredParams) != 3 {
+		t.Errorf("Expected 3 params, got %d", len(result.RequiredParams))
+	}
+}
+
+// =============================================================================
+// Cast Expression Tests
+// =============================================================================
+
+func TestCast_ToText(t *testing.T) {
+	instance := createBetweenTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Cast(instance.F("age"), astql.CastText), "age_text")).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT CAST("age" AS TEXT) AS "age_text" FROM "users"`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestCast_ToInteger(t *testing.T) {
+	instance := createBetweenTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.Cast(instance.F("score"), astql.CastInteger)).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, `CAST("score" AS INTEGER)`) {
+		t.Errorf("Expected CAST to INTEGER in SQL: %s", result.SQL)
+	}
+}
+
+func TestCast_ToTimestamp(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("created", "varchar"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.Cast(instance.F("created"), astql.CastTimestamp)).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "CAST") && !strings.Contains(result.SQL, "TIMESTAMP") {
+		t.Errorf("Expected CAST to TIMESTAMP in SQL: %s", result.SQL)
+	}
+}
+
+// =============================================================================
+// Window Function Tests
+// =============================================================================
+
+func createWindowTestInstance(t *testing.T) *astql.ASTQL {
+	t.Helper()
+	project := dbml.NewProject("test")
+
+	orders := dbml.NewTable("orders")
+	orders.AddColumn(dbml.NewColumn("id", "bigint"))
+	orders.AddColumn(dbml.NewColumn("user_id", "bigint"))
+	orders.AddColumn(dbml.NewColumn("total", "numeric"))
+	orders.AddColumn(dbml.NewColumn("created_at", "timestamp"))
+	project.AddTable(orders)
+
+	instance, err := astql.NewFromDBML(project)
+	if err != nil {
+		t.Fatalf("Failed to create instance: %v", err)
+	}
+	return instance
+}
+
+func TestWindowFunction_RowNumber(t *testing.T) {
+	instance := createWindowTestInstance(t)
+
+	winExpr := astql.RowNumber().
+		OrderBy(instance.F("total"), astql.DESC).
+		As("rank")
+
+	result, err := astql.Select(instance.T("orders")).
+		Fields(instance.F("id")).
+		SelectExpr(winExpr).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "ROW_NUMBER()") {
+		t.Errorf("Expected ROW_NUMBER() in SQL: %s", result.SQL)
+	}
+	if !strings.Contains(result.SQL, "OVER") {
+		t.Errorf("Expected OVER in SQL: %s", result.SQL)
+	}
+	if !strings.Contains(result.SQL, `ORDER BY "total" DESC`) {
+		t.Errorf("Expected ORDER BY in window: %s", result.SQL)
+	}
+}
+
+func TestWindowFunction_Rank(t *testing.T) {
+	instance := createWindowTestInstance(t)
+
+	winExpr := astql.Rank().
+		PartitionBy(instance.F("user_id")).
+		OrderBy(instance.F("total"), astql.DESC).
+		As("user_rank")
+
+	result, err := astql.Select(instance.T("orders")).
+		SelectExpr(winExpr).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "RANK()") {
+		t.Errorf("Expected RANK() in SQL: %s", result.SQL)
+	}
+	if !strings.Contains(result.SQL, `PARTITION BY "user_id"`) {
+		t.Errorf("Expected PARTITION BY in SQL: %s", result.SQL)
+	}
+}
+
+func TestWindowFunction_DenseRank(t *testing.T) {
+	instance := createWindowTestInstance(t)
+
+	winExpr := astql.DenseRank().
+		OrderBy(instance.F("total"), astql.ASC).
+		Build()
+
+	result, err := astql.Select(instance.T("orders")).
+		SelectExpr(winExpr).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "DENSE_RANK()") {
+		t.Errorf("Expected DENSE_RANK() in SQL: %s", result.SQL)
+	}
+}
+
+func TestWindowFunction_Ntile(t *testing.T) {
+	instance := createWindowTestInstance(t)
+
+	winExpr := astql.Ntile(instance.P("buckets")).
+		OrderBy(instance.F("total"), astql.DESC).
+		As("quartile")
+
+	result, err := astql.Select(instance.T("orders")).
+		SelectExpr(winExpr).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "NTILE(:buckets)") {
+		t.Errorf("Expected NTILE(:buckets) in SQL: %s", result.SQL)
+	}
+}
+
+func TestWindowFunction_Lag(t *testing.T) {
+	instance := createWindowTestInstance(t)
+
+	winExpr := astql.Lag(instance.F("total"), instance.P("offset"), instance.P("default")).
+		OrderBy(instance.F("created_at"), astql.ASC).
+		As("prev_total")
+
+	result, err := astql.Select(instance.T("orders")).
+		SelectExpr(winExpr).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "LAG") {
+		t.Errorf("Expected LAG in SQL: %s", result.SQL)
+	}
+}
+
+func TestWindowFunction_Lead(t *testing.T) {
+	instance := createWindowTestInstance(t)
+
+	winExpr := astql.Lead(instance.F("total"), instance.P("offset")).
+		OrderBy(instance.F("created_at"), astql.ASC).
+		Build()
+
+	result, err := astql.Select(instance.T("orders")).
+		SelectExpr(winExpr).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "LEAD") {
+		t.Errorf("Expected LEAD in SQL: %s", result.SQL)
+	}
+}
+
+func TestWindowFunction_FirstValue(t *testing.T) {
+	instance := createWindowTestInstance(t)
+
+	winExpr := astql.FirstValue(instance.F("total")).
+		PartitionBy(instance.F("user_id")).
+		OrderBy(instance.F("created_at"), astql.ASC).
+		Build()
+
+	result, err := astql.Select(instance.T("orders")).
+		SelectExpr(winExpr).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "FIRST_VALUE") {
+		t.Errorf("Expected FIRST_VALUE in SQL: %s", result.SQL)
+	}
+}
+
+func TestWindowFunction_LastValue(t *testing.T) {
+	instance := createWindowTestInstance(t)
+
+	winExpr := astql.LastValue(instance.F("total")).
+		PartitionBy(instance.F("user_id")).
+		OrderBy(instance.F("created_at"), astql.ASC).
+		Frame(astql.FrameUnboundedPreceding, astql.FrameUnboundedFollowing).
+		Build()
+
+	result, err := astql.Select(instance.T("orders")).
+		SelectExpr(winExpr).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "LAST_VALUE") {
+		t.Errorf("Expected LAST_VALUE in SQL: %s", result.SQL)
+	}
+	if !strings.Contains(result.SQL, "ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING") {
+		t.Errorf("Expected frame clause in SQL: %s", result.SQL)
+	}
+}
+
+func TestWindowFunction_SumOver(t *testing.T) {
+	instance := createWindowTestInstance(t)
+
+	winExpr := astql.SumOver(instance.F("total")).
+		PartitionBy(instance.F("user_id")).
+		As("running_total")
+
+	result, err := astql.Select(instance.T("orders")).
+		SelectExpr(winExpr).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, `SUM("total")`) {
+		t.Errorf("Expected SUM in SQL: %s", result.SQL)
+	}
+	if !strings.Contains(result.SQL, "OVER") {
+		t.Errorf("Expected OVER in SQL: %s", result.SQL)
+	}
+}
+
+func TestWindowFunction_CountOver(t *testing.T) {
+	instance := createWindowTestInstance(t)
+
+	winExpr := astql.CountOver().
+		PartitionBy(instance.F("user_id")).
+		As("order_count")
+
+	result, err := astql.Select(instance.T("orders")).
+		SelectExpr(winExpr).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "COUNT(*)") {
+		t.Errorf("Expected COUNT(*) in SQL: %s", result.SQL)
+	}
+}
+
+// =============================================================================
+// Filter Clause Tests
+// =============================================================================
+
+func TestSumFilter(t *testing.T) {
+	instance := createWindowTestInstance(t)
+
+	filterExpr := astql.SumFilter(
+		instance.F("total"),
+		instance.C(instance.F("user_id"), "=", instance.P("target_user")),
+	)
+
+	result, err := astql.Select(instance.T("orders")).
+		SelectExpr(astql.As(filterExpr, "user_total")).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "FILTER") {
+		t.Errorf("Expected FILTER in SQL: %s", result.SQL)
+	}
+	if !strings.Contains(result.SQL, "WHERE") {
+		t.Errorf("Expected WHERE inside FILTER: %s", result.SQL)
+	}
+}
+
+func TestCountFilter(t *testing.T) {
+	instance := createWindowTestInstance(t)
+
+	filterExpr := astql.CountFieldFilter(
+		instance.F("id"),
+		instance.C(instance.F("total"), ">", instance.P("min_total")),
+	)
+
+	result, err := astql.Select(instance.T("orders")).
+		SelectExpr(astql.As(filterExpr, "high_value_count")).
+		GroupBy(instance.F("user_id")).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "COUNT") {
+		t.Errorf("Expected COUNT in SQL: %s", result.SQL)
+	}
+	if !strings.Contains(result.SQL, "FILTER") {
+		t.Errorf("Expected FILTER in SQL: %s", result.SQL)
+	}
+}
+
+// =============================================================================
+// ILIKE Operator Tests
+// =============================================================================
+
+func TestILIKE_Basic(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("username", "varchar"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	result, err := astql.Select(instance.T("users")).
+		Where(instance.C(instance.F("username"), "ILIKE", instance.P("pattern"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "ILIKE") {
+		t.Errorf("Expected ILIKE in SQL: %s", result.SQL)
+	}
+}
+
+func TestNotILIKE_Basic(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("username", "varchar"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	result, err := astql.Select(instance.T("users")).
+		Where(instance.C(instance.F("username"), "NOT ILIKE", instance.P("pattern"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "NOT ILIKE") {
+		t.Errorf("Expected NOT ILIKE in SQL: %s", result.SQL)
+	}
+}
+
+// =============================================================================
+// Regex Operator Tests
+// =============================================================================
+
+func TestRegexMatch(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("email", "varchar"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	result, err := astql.Select(instance.T("users")).
+		Where(instance.C(instance.F("email"), "~", instance.P("pattern"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "~") {
+		t.Errorf("Expected ~ in SQL: %s", result.SQL)
+	}
+}
+
+func TestRegexIMatch(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("email", "varchar"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	result, err := astql.Select(instance.T("users")).
+		Where(instance.C(instance.F("email"), "~*", instance.P("pattern"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "~*") {
+		t.Errorf("Expected ~* in SQL: %s", result.SQL)
+	}
+}
+
+// =============================================================================
+// Array Operator Tests
+// =============================================================================
+
+func TestArrayContains(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("tags", "text[]"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	result, err := astql.Select(instance.T("users")).
+		Where(instance.C(instance.F("tags"), "@>", instance.P("required_tags"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "@>") {
+		t.Errorf("Expected @> in SQL: %s", result.SQL)
+	}
+}
+
+func TestArrayOverlap(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("tags", "text[]"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	result, err := astql.Select(instance.T("users")).
+		Where(instance.C(instance.F("tags"), "&&", instance.P("any_tags"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "&&") {
+		t.Errorf("Expected && in SQL: %s", result.SQL)
+	}
+}
+
+func TestArrayContainedBy(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("tags", "text[]"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	result, err := astql.Select(instance.T("users")).
+		Where(instance.C(instance.F("tags"), "<@", instance.P("allowed_tags"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "<@") {
+		t.Errorf("Expected <@ in SQL: %s", result.SQL)
+	}
+}
+
+func TestNotLike(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("username", "varchar"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	result, err := astql.Select(instance.T("users")).
+		Where(instance.C(instance.F("username"), "NOT LIKE", instance.P("pattern"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "NOT LIKE") {
+		t.Errorf("Expected NOT LIKE in SQL: %s", result.SQL)
+	}
+}
+
+func TestNotRegexMatch(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("email", "varchar"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	result, err := astql.Select(instance.T("users")).
+		Where(instance.C(instance.F("email"), "!~", instance.P("pattern"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "!~") {
+		t.Errorf("Expected !~ in SQL: %s", result.SQL)
+	}
+}
+
+func TestNotRegexIMatch(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("email", "varchar"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	result, err := astql.Select(instance.T("users")).
+		Where(instance.C(instance.F("email"), "!~*", instance.P("pattern"))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "!~*") {
+		t.Errorf("Expected !~* in SQL: %s", result.SQL)
+	}
+}
+
+// =============================================================================
+// Aggregate Filter Function Tests
+// =============================================================================
+
+func TestAvgFilter(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("age", "int"))
+	users.AddColumn(dbml.NewColumn("active", "boolean"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.AvgFilter(instance.F("age"), instance.C(instance.F("active"), "=", instance.P("is_active")))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "AVG") && !strings.Contains(result.SQL, "FILTER") {
+		t.Errorf("Expected AVG with FILTER in SQL: %s", result.SQL)
+	}
+}
+
+func TestMinFilter(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("age", "int"))
+	users.AddColumn(dbml.NewColumn("active", "boolean"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.MinFilter(instance.F("age"), instance.C(instance.F("active"), "=", instance.P("is_active")))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "MIN") {
+		t.Errorf("Expected MIN in SQL: %s", result.SQL)
+	}
+}
+
+func TestMaxFilter(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("age", "int"))
+	users.AddColumn(dbml.NewColumn("active", "boolean"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.MaxFilter(instance.F("age"), instance.C(instance.F("active"), "=", instance.P("is_active")))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "MAX") {
+		t.Errorf("Expected MAX in SQL: %s", result.SQL)
+	}
+}
+
+func TestCountDistinctFilter(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("id", "bigint"))
+	users.AddColumn(dbml.NewColumn("active", "boolean"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.CountDistinctFilter(instance.F("id"), instance.C(instance.F("active"), "=", instance.P("is_active")))).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "COUNT") && !strings.Contains(result.SQL, "DISTINCT") {
+		t.Errorf("Expected COUNT DISTINCT in SQL: %s", result.SQL)
+	}
+}
+
+// =============================================================================
+// Window Spec Builder Tests
+// =============================================================================
+
+func TestWindowSpecBuilder(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("id", "bigint"))
+	users.AddColumn(dbml.NewColumn("age", "int"))
+	users.AddColumn(dbml.NewColumn("department", "varchar"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	// Use RowNumber with the window spec builder pattern
+	winExpr := astql.RowNumber().
+		PartitionBy(instance.F("department")).
+		OrderBy(instance.F("age"), astql.DESC).
+		As("row_num")
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("id")).
+		SelectExpr(winExpr).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "ROW_NUMBER()") {
+		t.Errorf("Expected ROW_NUMBER() in SQL: %s", result.SQL)
+	}
+	if !strings.Contains(result.SQL, "PARTITION BY") {
+		t.Errorf("Expected PARTITION BY in SQL: %s", result.SQL)
+	}
+	if !strings.Contains(result.SQL, "ORDER BY") {
+		t.Errorf("Expected ORDER BY in SQL: %s", result.SQL)
+	}
+}
+
+func TestWindowSpecBuilder_Build(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("age", "int"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	// Test the Window() -> WindowSpecBuilder -> Build() path
+	spec := astql.Window().
+		OrderBy(instance.F("age"), astql.ASC).
+		Rows(astql.FrameUnboundedPreceding, astql.FrameCurrentRow).
+		Build()
+
+	// Verify spec was built (it's a value type)
+	if spec.FrameStart != astql.FrameUnboundedPreceding {
+		t.Error("Expected FrameStart to be set")
+	}
+}
+
+func TestWindowSpecBuilder_OrderByNulls(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("age", "int"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	spec := astql.Window().
+		OrderByNulls(instance.F("age"), astql.ASC, astql.NullsLast).
+		Build()
+
+	// Verify ordering was set
+	if len(spec.OrderBy) == 0 {
+		t.Error("Expected OrderBy to be set")
+	}
+	if spec.OrderBy[0].Nulls != astql.NullsLast {
+		t.Errorf("Expected NullsLast, got %v", spec.OrderBy[0].Nulls)
+	}
+}
+
+func TestAvgOver(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("id", "bigint"))
+	users.AddColumn(dbml.NewColumn("age", "int"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	winExpr := astql.AvgOver(instance.F("age")).As("avg_age")
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("id")).
+		SelectExpr(winExpr).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "AVG") {
+		t.Errorf("Expected AVG in SQL: %s", result.SQL)
+	}
+}
+
+func TestMinOver(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("id", "bigint"))
+	users.AddColumn(dbml.NewColumn("age", "int"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	winExpr := astql.MinOver(instance.F("age")).As("min_age")
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("id")).
+		SelectExpr(winExpr).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "MIN") {
+		t.Errorf("Expected MIN in SQL: %s", result.SQL)
+	}
+}
+
+func TestMaxOver(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("id", "bigint"))
+	users.AddColumn(dbml.NewColumn("age", "int"))
+	project.AddTable(users)
+	instance, _ := astql.NewFromDBML(project)
+
+	winExpr := astql.MaxOver(instance.F("age")).As("max_age")
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("id")).
+		SelectExpr(winExpr).
+		Render()
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "MAX") {
+		t.Errorf("Expected MAX in SQL: %s", result.SQL)
+	}
+}

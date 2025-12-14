@@ -21,24 +21,44 @@ const (
 	DESC Direction = "DESC"
 )
 
+// NullsOrdering represents NULL ordering in ORDER BY.
+type NullsOrdering string
+
+const (
+	NullsFirst NullsOrdering = "NULLS FIRST"
+	NullsLast  NullsOrdering = "NULLS LAST"
+)
+
 // OrderBy represents an ORDER BY clause.
 type OrderBy struct {
 	Field     Field
 	Direction Direction
+	Nulls     NullsOrdering // Optional NULLS FIRST/LAST
 	// Expression fields for ORDER BY field <op> param (e.g., vector distance).
 	// When Operator is set, renders as: field <op> param [direction]
 	Operator Operator
 	Param    Param
 }
 
+// LockMode represents row-level locking modes (PostgreSQL).
+type LockMode string
+
+const (
+	LockForUpdate      LockMode = "FOR UPDATE"
+	LockForNoKeyUpdate LockMode = "FOR NO KEY UPDATE"
+	LockForShare       LockMode = "FOR SHARE"
+	LockForKeyShare    LockMode = "FOR KEY SHARE"
+)
+
 // JoinType represents the type of SQL join.
 type JoinType string
 
 const (
-	InnerJoin JoinType = "INNER JOIN"
-	LeftJoin  JoinType = "LEFT JOIN"
-	RightJoin JoinType = "RIGHT JOIN"
-	CrossJoin JoinType = "CROSS JOIN"
+	InnerJoin     JoinType = "INNER JOIN"
+	LeftJoin      JoinType = "LEFT JOIN"
+	RightJoin     JoinType = "RIGHT JOIN"
+	FullOuterJoin JoinType = "FULL OUTER JOIN"
+	CrossJoin     JoinType = "CROSS JOIN"
 )
 
 // Join represents a SQL JOIN clause.
@@ -80,10 +100,13 @@ const (
 type FieldExpression struct {
 	Field     Field
 	Aggregate AggregateFunc
+	Filter    ConditionItem       // For FILTER clause on aggregates
 	Case      *CaseExpression     // For CASE expressions in SELECT
 	Coalesce  *CoalesceExpression // For COALESCE expressions
 	NullIf    *NullIfExpression   // For NULLIF expressions
 	Math      *MathExpression     // For math functions
+	Cast      *CastExpression     // For type casting
+	Window    *WindowExpression   // For window functions
 	Alias     string
 }
 
@@ -134,6 +157,104 @@ type MathExpression struct {
 	Alias     string
 }
 
+// CastType represents allowed PostgreSQL data types for casting.
+type CastType string
+
+const (
+	CastText            CastType = "TEXT"
+	CastInteger         CastType = "INTEGER"
+	CastBigint          CastType = "BIGINT"
+	CastSmallint        CastType = "SMALLINT"
+	CastNumeric         CastType = "NUMERIC"
+	CastReal            CastType = "REAL"
+	CastDoublePrecision CastType = "DOUBLE PRECISION"
+	CastBoolean         CastType = "BOOLEAN"
+	CastDate            CastType = "DATE"
+	CastTime            CastType = "TIME"
+	CastTimestamp       CastType = "TIMESTAMP"
+	CastTimestampTZ     CastType = "TIMESTAMPTZ"
+	CastInterval        CastType = "INTERVAL"
+	CastUUID            CastType = "UUID"
+	CastJSON            CastType = "JSON"
+	CastJSONB           CastType = "JSONB"
+	CastBytea           CastType = "BYTEA"
+)
+
+// CastExpression represents a type cast.
+type CastExpression struct {
+	Field    Field
+	CastType CastType
+}
+
+// WindowFunc represents window function types.
+type WindowFunc string
+
+const (
+	WinRowNumber  WindowFunc = "ROW_NUMBER"
+	WinRank       WindowFunc = "RANK"
+	WinDenseRank  WindowFunc = "DENSE_RANK"
+	WinNtile      WindowFunc = "NTILE"
+	WinLag        WindowFunc = "LAG"
+	WinLead       WindowFunc = "LEAD"
+	WinFirstValue WindowFunc = "FIRST_VALUE"
+	WinLastValue  WindowFunc = "LAST_VALUE"
+)
+
+// FrameBound represents window frame boundaries.
+type FrameBound string
+
+const (
+	FrameUnboundedPreceding FrameBound = "UNBOUNDED PRECEDING"
+	FrameCurrentRow         FrameBound = "CURRENT ROW"
+	FrameUnboundedFollowing FrameBound = "UNBOUNDED FOLLOWING"
+)
+
+// WindowSpec represents a window specification.
+type WindowSpec struct {
+	FrameStart  FrameBound
+	FrameEnd    FrameBound
+	PartitionBy []Field
+	OrderBy     []OrderBy
+}
+
+// WindowExpression represents a window function call.
+type WindowExpression struct {
+	Field      *Field
+	NtileParam *Param
+	LagOffset  *Param
+	LagDefault *Param
+	Function   WindowFunc
+	Aggregate  AggregateFunc
+	Window     WindowSpec
+}
+
+// SetOperation represents SQL set operations.
+type SetOperation string
+
+const (
+	SetUnion        SetOperation = "UNION"
+	SetUnionAll     SetOperation = "UNION ALL"
+	SetIntersect    SetOperation = "INTERSECT"
+	SetIntersectAll SetOperation = "INTERSECT ALL"
+	SetExcept       SetOperation = "EXCEPT"
+	SetExceptAll    SetOperation = "EXCEPT ALL"
+)
+
+// SetOperand represents one operand in a set operation.
+type SetOperand struct {
+	AST       *AST
+	Operation SetOperation // Operation to apply BEFORE this AST
+}
+
+// CompoundQuery represents a query with set operations.
+type CompoundQuery struct {
+	Base     *AST
+	Limit    *int
+	Offset   *int
+	Operands []SetOperand
+	Ordering []OrderBy
+}
+
 // FieldComparison represents a comparison between two fields.
 type FieldComparison struct {
 	LeftField  Field
@@ -155,10 +276,12 @@ type Subquery struct {
 
 // Constants for query complexity limits to prevent DoS attacks.
 const (
-	MaxSubqueryDepth  = 3   // Prevent DoS via deep nesting
-	MaxJoinCount      = 10  // Maximum number of JOINs per query
-	MaxConditionDepth = 5   // Maximum nesting depth of condition groups
-	MaxFieldCount     = 100 // Maximum number of fields in SELECT
+	MaxSubqueryDepth   = 3   // Prevent DoS via deep nesting
+	MaxJoinCount       = 10  // Maximum number of JOINs per query
+	MaxConditionDepth  = 5   // Maximum nesting depth of condition groups
+	MaxFieldCount      = 100 // Maximum number of fields in SELECT
+	MaxWindowFunctions = 10  // Maximum number of window functions per query
+	MaxSetOperations   = 5   // Maximum number of UNION/INTERSECT/EXCEPT operations
 )
 
 // Implement ConditionItem interface for new condition types.
@@ -171,22 +294,24 @@ func (SubqueryCondition) IsConditionItem() {}
 //
 //nolint:govet // fieldalignment: Logical grouping is preferred over memory optimization
 type AST struct {
-	Operation        Operation
-	Target           Table
-	Fields           []Field
 	WhereClause      ConditionItem
-	Ordering         []OrderBy
+	Lock             *LockMode
+	OnConflict       *ConflictClause
 	Limit            *int
 	Offset           *int
-	Updates          map[Field]Param   // For UPDATE operations
-	Values           []map[Field]Param // For INSERT operations
-	OnConflict       *ConflictClause   // PostgreSQL ON CONFLICT
-	Joins            []Join            // JOIN clauses
-	GroupBy          []Field           // GROUP BY fields
-	Having           []Condition       // HAVING conditions
-	FieldExpressions []FieldExpression // Field expressions (aggregates, CASE, etc)
-	Returning        []Field           // RETURNING fields (PostgreSQL)
-	Distinct         bool              // DISTINCT flag
+	Updates          map[Field]Param
+	Target           Table
+	Operation        Operation
+	Values           []map[Field]Param
+	Ordering         []OrderBy
+	Joins            []Join
+	GroupBy          []Field
+	Having           []ConditionItem
+	FieldExpressions []FieldExpression
+	Returning        []Field
+	DistinctOn       []Field
+	Fields           []Field
+	Distinct         bool
 }
 
 // Validate performs basic validation on the AST.
@@ -203,6 +328,17 @@ func (ast *AST) Validate() error {
 	totalFields := len(ast.Fields) + len(ast.FieldExpressions)
 	if totalFields > MaxFieldCount {
 		return fmt.Errorf("too many fields: %d (max %d)", totalFields, MaxFieldCount)
+	}
+
+	// Count window functions
+	windowCount := 0
+	for i := range ast.FieldExpressions {
+		if ast.FieldExpressions[i].Window != nil {
+			windowCount++
+		}
+	}
+	if windowCount > MaxWindowFunctions {
+		return fmt.Errorf("too many window functions: %d (max %d)", windowCount, MaxWindowFunctions)
 	}
 
 	// Validate condition depth
@@ -266,6 +402,11 @@ func (ast *AST) Validate() error {
 		return fmt.Errorf("HAVING requires GROUP BY")
 	}
 
+	// DISTINCT ON and DISTINCT are mutually exclusive
+	if ast.Distinct && len(ast.DistinctOn) > 0 {
+		return fmt.Errorf("cannot use both DISTINCT and DISTINCT ON")
+	}
+
 	return nil
 }
 
@@ -282,7 +423,7 @@ func validateConditionDepth(cond ConditionItem, depth int) error {
 				return err
 			}
 		}
-	case Condition, FieldComparison, SubqueryCondition:
+	case Condition, FieldComparison, SubqueryCondition, AggregateCondition, BetweenCondition:
 		// Leaf nodes, no further depth
 	}
 

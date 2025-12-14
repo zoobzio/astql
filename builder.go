@@ -182,7 +182,23 @@ func (b *Builder) OrderBy(f types.Field, direction types.Direction) *Builder {
 	return b
 }
 
-// Useful for vector distance ordering: ORDER BY embedding <-> :query_vector ASC.
+// OrderByNulls adds ordering with NULLS FIRST/LAST.
+func (b *Builder) OrderByNulls(f types.Field, direction types.Direction, nulls types.NullsOrdering) *Builder {
+	if b.err != nil {
+		return b
+	}
+	if b.ast.Ordering == nil {
+		b.ast.Ordering = []types.OrderBy{}
+	}
+	b.ast.Ordering = append(b.ast.Ordering, types.OrderBy{
+		Field:     f,
+		Direction: direction,
+		Nulls:     nulls,
+	})
+	return b
+}
+
+// OrderByExpr is useful for vector distance ordering: ORDER BY embedding <-> :query_vector ASC.
 func (b *Builder) OrderByExpr(f types.Field, op types.Operator, p types.Param, direction types.Direction) *Builder {
 	if b.err != nil {
 		return b
@@ -267,7 +283,85 @@ func (b *Builder) Distinct() *Builder {
 		b.err = fmt.Errorf("DISTINCT can only be used with SELECT queries")
 		return b
 	}
+	if len(b.ast.DistinctOn) > 0 {
+		b.err = fmt.Errorf("cannot use DISTINCT with DISTINCT ON")
+		return b
+	}
 	b.ast.Distinct = true
+	return b
+}
+
+// DistinctOn sets DISTINCT ON fields for SELECT queries (PostgreSQL).
+// The query will return only the first row for each unique combination of the specified fields.
+func (b *Builder) DistinctOn(fields ...types.Field) *Builder {
+	if b.err != nil {
+		return b
+	}
+	if b.ast.Operation != types.OpSelect {
+		b.err = fmt.Errorf("DISTINCT ON can only be used with SELECT queries")
+		return b
+	}
+	if b.ast.Distinct {
+		b.err = fmt.Errorf("cannot use DISTINCT ON with DISTINCT")
+		return b
+	}
+	b.ast.DistinctOn = fields
+	return b
+}
+
+// ForUpdate adds FOR UPDATE row locking.
+func (b *Builder) ForUpdate() *Builder {
+	if b.err != nil {
+		return b
+	}
+	if b.ast.Operation != types.OpSelect {
+		b.err = fmt.Errorf("FOR UPDATE can only be used with SELECT queries")
+		return b
+	}
+	lock := types.LockForUpdate
+	b.ast.Lock = &lock
+	return b
+}
+
+// ForNoKeyUpdate adds FOR NO KEY UPDATE row locking.
+func (b *Builder) ForNoKeyUpdate() *Builder {
+	if b.err != nil {
+		return b
+	}
+	if b.ast.Operation != types.OpSelect {
+		b.err = fmt.Errorf("FOR NO KEY UPDATE can only be used with SELECT queries")
+		return b
+	}
+	lock := types.LockForNoKeyUpdate
+	b.ast.Lock = &lock
+	return b
+}
+
+// ForShare adds FOR SHARE row locking.
+func (b *Builder) ForShare() *Builder {
+	if b.err != nil {
+		return b
+	}
+	if b.ast.Operation != types.OpSelect {
+		b.err = fmt.Errorf("FOR SHARE can only be used with SELECT queries")
+		return b
+	}
+	lock := types.LockForShare
+	b.ast.Lock = &lock
+	return b
+}
+
+// ForKeyShare adds FOR KEY SHARE row locking.
+func (b *Builder) ForKeyShare() *Builder {
+	if b.err != nil {
+		return b
+	}
+	if b.ast.Operation != types.OpSelect {
+		b.err = fmt.Errorf("FOR KEY SHARE can only be used with SELECT queries")
+		return b
+	}
+	lock := types.LockForKeyShare
+	b.ast.Lock = &lock
 	return b
 }
 
@@ -289,6 +383,11 @@ func (b *Builder) LeftJoin(table types.Table, on types.ConditionItem) *Builder {
 // RightJoin adds a RIGHT JOIN.
 func (b *Builder) RightJoin(table types.Table, on types.ConditionItem) *Builder {
 	return b.addJoin(types.RightJoin, table, on)
+}
+
+// FullOuterJoin adds a FULL OUTER JOIN.
+func (b *Builder) FullOuterJoin(table types.Table, on types.ConditionItem) *Builder {
+	return b.addJoin(types.FullOuterJoin, table, on)
 }
 
 // CrossJoin adds a CROSS JOIN (no ON clause needed).
@@ -337,7 +436,8 @@ func (b *Builder) GroupBy(fields ...types.Field) *Builder {
 	return b
 }
 
-// Having adds HAVING conditions.
+// Having adds HAVING conditions (simple field-based conditions).
+// For aggregate conditions like COUNT(*) > 10, use HavingAgg instead.
 func (b *Builder) Having(conditions ...types.Condition) *Builder {
 	if b.err != nil {
 		return b
@@ -350,7 +450,29 @@ func (b *Builder) Having(conditions ...types.Condition) *Builder {
 		b.err = fmt.Errorf("HAVING requires GROUP BY")
 		return b
 	}
-	b.ast.Having = append(b.ast.Having, conditions...)
+	for _, c := range conditions {
+		b.ast.Having = append(b.ast.Having, c)
+	}
+	return b
+}
+
+// HavingAgg adds aggregate HAVING conditions like COUNT(*) > :min_count.
+// Use this for conditions on aggregate functions (COUNT, SUM, AVG, MIN, MAX).
+func (b *Builder) HavingAgg(conditions ...types.AggregateCondition) *Builder {
+	if b.err != nil {
+		return b
+	}
+	if b.ast.Operation != types.OpSelect {
+		b.err = fmt.Errorf("HAVING can only be used with SELECT queries")
+		return b
+	}
+	if len(b.ast.GroupBy) == 0 {
+		b.err = fmt.Errorf("HAVING requires GROUP BY")
+		return b
+	}
+	for _, c := range conditions {
+		b.ast.Having = append(b.ast.Having, c)
+	}
 	return b
 }
 
@@ -446,4 +568,232 @@ func (b *Builder) SelectExpr(expr types.FieldExpression) *Builder {
 	}
 	b.ast.FieldExpressions = append(b.ast.FieldExpressions, expr)
 	return b
+}
+
+// Set operations (UNION, INTERSECT, EXCEPT)
+
+// Union creates a UNION between two queries (standalone function).
+func Union(first, second *Builder) *CompoundBuilder {
+	return first.Union(second)
+}
+
+// UnionAll creates a UNION ALL between two queries (standalone function).
+func UnionAll(first, second *Builder) *CompoundBuilder {
+	return first.UnionAll(second)
+}
+
+// Intersect creates an INTERSECT between two queries (standalone function).
+func Intersect(first, second *Builder) *CompoundBuilder {
+	return first.Intersect(second)
+}
+
+// IntersectAll creates an INTERSECT ALL between two queries (standalone function).
+func IntersectAll(first, second *Builder) *CompoundBuilder {
+	return first.IntersectAll(second)
+}
+
+// Except creates an EXCEPT between two queries (standalone function).
+func Except(first, second *Builder) *CompoundBuilder {
+	return first.Except(second)
+}
+
+// ExceptAll creates an EXCEPT ALL between two queries (standalone function).
+func ExceptAll(first, second *Builder) *CompoundBuilder {
+	return first.ExceptAll(second)
+}
+
+// CompoundBuilder handles building compound queries with set operations.
+type CompoundBuilder struct {
+	query *types.CompoundQuery
+	err   error
+}
+
+// Union creates a UNION between two queries.
+func (b *Builder) Union(other *Builder) *CompoundBuilder {
+	return b.setOperation(types.SetUnion, other)
+}
+
+// UnionAll creates a UNION ALL between two queries.
+func (b *Builder) UnionAll(other *Builder) *CompoundBuilder {
+	return b.setOperation(types.SetUnionAll, other)
+}
+
+// Intersect creates an INTERSECT between two queries.
+func (b *Builder) Intersect(other *Builder) *CompoundBuilder {
+	return b.setOperation(types.SetIntersect, other)
+}
+
+// IntersectAll creates an INTERSECT ALL between two queries.
+func (b *Builder) IntersectAll(other *Builder) *CompoundBuilder {
+	return b.setOperation(types.SetIntersectAll, other)
+}
+
+// Except creates an EXCEPT between two queries.
+func (b *Builder) Except(other *Builder) *CompoundBuilder {
+	return b.setOperation(types.SetExcept, other)
+}
+
+// ExceptAll creates an EXCEPT ALL between two queries.
+func (b *Builder) ExceptAll(other *Builder) *CompoundBuilder {
+	return b.setOperation(types.SetExceptAll, other)
+}
+
+func (b *Builder) setOperation(op types.SetOperation, other *Builder) *CompoundBuilder {
+	if b.err != nil {
+		return &CompoundBuilder{err: b.err}
+	}
+	if other.err != nil {
+		return &CompoundBuilder{err: other.err}
+	}
+	if b.ast.Operation != types.OpSelect {
+		return &CompoundBuilder{err: fmt.Errorf("set operations can only be used with SELECT queries")}
+	}
+	if other.ast.Operation != types.OpSelect {
+		return &CompoundBuilder{err: fmt.Errorf("set operations can only be used with SELECT queries")}
+	}
+
+	baseAST, err := b.Build()
+	if err != nil {
+		return &CompoundBuilder{err: err}
+	}
+
+	otherAST, err := other.Build()
+	if err != nil {
+		return &CompoundBuilder{err: err}
+	}
+
+	return &CompoundBuilder{
+		query: &types.CompoundQuery{
+			Base: baseAST,
+			Operands: []types.SetOperand{{
+				AST:       otherAST,
+				Operation: op,
+			}},
+		},
+	}
+}
+
+// Union adds a UNION to the compound query.
+func (cb *CompoundBuilder) Union(other *Builder) *CompoundBuilder {
+	return cb.addOperation(types.SetUnion, other)
+}
+
+// UnionAll adds a UNION ALL to the compound query.
+func (cb *CompoundBuilder) UnionAll(other *Builder) *CompoundBuilder {
+	return cb.addOperation(types.SetUnionAll, other)
+}
+
+// Intersect adds an INTERSECT to the compound query.
+func (cb *CompoundBuilder) Intersect(other *Builder) *CompoundBuilder {
+	return cb.addOperation(types.SetIntersect, other)
+}
+
+// IntersectAll adds an INTERSECT ALL to the compound query.
+func (cb *CompoundBuilder) IntersectAll(other *Builder) *CompoundBuilder {
+	return cb.addOperation(types.SetIntersectAll, other)
+}
+
+// Except adds an EXCEPT to the compound query.
+func (cb *CompoundBuilder) Except(other *Builder) *CompoundBuilder {
+	return cb.addOperation(types.SetExcept, other)
+}
+
+// ExceptAll adds an EXCEPT ALL to the compound query.
+func (cb *CompoundBuilder) ExceptAll(other *Builder) *CompoundBuilder {
+	return cb.addOperation(types.SetExceptAll, other)
+}
+
+func (cb *CompoundBuilder) addOperation(op types.SetOperation, other *Builder) *CompoundBuilder {
+	if cb.err != nil {
+		return cb
+	}
+	if len(cb.query.Operands) >= types.MaxSetOperations {
+		cb.err = fmt.Errorf("too many set operations: max %d", types.MaxSetOperations)
+		return cb
+	}
+	if other.err != nil {
+		cb.err = other.err
+		return cb
+	}
+	if other.ast.Operation != types.OpSelect {
+		cb.err = fmt.Errorf("set operations can only be used with SELECT queries")
+		return cb
+	}
+
+	otherAST, err := other.Build()
+	if err != nil {
+		cb.err = err
+		return cb
+	}
+
+	cb.query.Operands = append(cb.query.Operands, types.SetOperand{
+		AST:       otherAST,
+		Operation: op,
+	})
+	return cb
+}
+
+// OrderBy adds final ordering to the compound query.
+func (cb *CompoundBuilder) OrderBy(f types.Field, direction types.Direction) *CompoundBuilder {
+	if cb.err != nil {
+		return cb
+	}
+	cb.query.Ordering = append(cb.query.Ordering, types.OrderBy{
+		Field:     f,
+		Direction: direction,
+	})
+	return cb
+}
+
+// Limit sets the limit for the compound query.
+func (cb *CompoundBuilder) Limit(limit int) *CompoundBuilder {
+	if cb.err != nil {
+		return cb
+	}
+	cb.query.Limit = &limit
+	return cb
+}
+
+// Offset sets the offset for the compound query.
+func (cb *CompoundBuilder) Offset(offset int) *CompoundBuilder {
+	if cb.err != nil {
+		return cb
+	}
+	cb.query.Offset = &offset
+	return cb
+}
+
+// Build returns the CompoundQuery or an error.
+func (cb *CompoundBuilder) Build() (*types.CompoundQuery, error) {
+	if cb.err != nil {
+		return nil, cb.err
+	}
+	return cb.query, nil
+}
+
+// MustBuild returns the CompoundQuery or panics on error.
+func (cb *CompoundBuilder) MustBuild() *types.CompoundQuery {
+	query, err := cb.Build()
+	if err != nil {
+		panic(err)
+	}
+	return query
+}
+
+// Render builds and renders the compound query to SQL.
+func (cb *CompoundBuilder) Render() (*QueryResult, error) {
+	query, err := cb.Build()
+	if err != nil {
+		return nil, err
+	}
+	return RenderCompound(query)
+}
+
+// MustRender builds and renders the compound query or panics on error.
+func (cb *CompoundBuilder) MustRender() *QueryResult {
+	result, err := cb.Render()
+	if err != nil {
+		panic(err)
+	}
+	return result
 }
