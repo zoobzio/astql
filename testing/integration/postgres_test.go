@@ -63,7 +63,7 @@ func NewPostgresContainer(ctx context.Context, t *testing.T) *PostgresContainer 
 func (pc *PostgresContainer) Close(ctx context.Context, t *testing.T) {
 	t.Helper()
 	if pc.conn != nil {
-		pc.conn.Close(ctx)
+		_ = pc.conn.Close(ctx)
 	}
 	if pc.container != nil {
 		if err := pc.container.Terminate(ctx); err != nil {

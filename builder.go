@@ -215,21 +215,39 @@ func (b *Builder) OrderByExpr(f types.Field, op types.Operator, p types.Param, d
 	return b
 }
 
-// Limit sets the limit.
+// Limit sets the limit to a static integer value.
 func (b *Builder) Limit(limit int) *Builder {
 	if b.err != nil {
 		return b
 	}
-	b.ast.Limit = &limit
+	b.ast.Limit = &types.PaginationValue{Static: &limit}
 	return b
 }
 
-// Offset sets the offset.
+// LimitParam sets the limit to a parameterized value.
+func (b *Builder) LimitParam(param types.Param) *Builder {
+	if b.err != nil {
+		return b
+	}
+	b.ast.Limit = &types.PaginationValue{Param: &param}
+	return b
+}
+
+// Offset sets the offset to a static integer value.
 func (b *Builder) Offset(offset int) *Builder {
 	if b.err != nil {
 		return b
 	}
-	b.ast.Offset = &offset
+	b.ast.Offset = &types.PaginationValue{Static: &offset}
+	return b
+}
+
+// OffsetParam sets the offset to a parameterized value.
+func (b *Builder) OffsetParam(param types.Param) *Builder {
+	if b.err != nil {
+		return b
+	}
+	b.ast.Offset = &types.PaginationValue{Param: &param}
 	return b
 }
 
@@ -268,6 +286,24 @@ func (b *Builder) Render() (*QueryResult, error) {
 // MustRender builds and renders the AST or panics on error.
 func (b *Builder) MustRender() *QueryResult {
 	result, err := b.Render()
+	if err != nil {
+		panic(err)
+	}
+	return result
+}
+
+// RenderWith builds the AST and renders it using the provided renderer.
+func (b *Builder) RenderWith(renderer Renderer) (*QueryResult, error) {
+	ast, err := b.Build()
+	if err != nil {
+		return nil, err
+	}
+	return renderer.Render(ast)
+}
+
+// MustRenderWith builds and renders the AST with the provided renderer, or panics on error.
+func (b *Builder) MustRenderWith(renderer Renderer) *QueryResult {
+	result, err := b.RenderWith(renderer)
 	if err != nil {
 		panic(err)
 	}
@@ -745,21 +781,39 @@ func (cb *CompoundBuilder) OrderBy(f types.Field, direction types.Direction) *Co
 	return cb
 }
 
-// Limit sets the limit for the compound query.
+// Limit sets the limit for the compound query to a static integer value.
 func (cb *CompoundBuilder) Limit(limit int) *CompoundBuilder {
 	if cb.err != nil {
 		return cb
 	}
-	cb.query.Limit = &limit
+	cb.query.Limit = &types.PaginationValue{Static: &limit}
 	return cb
 }
 
-// Offset sets the offset for the compound query.
+// LimitParam sets the limit for the compound query to a parameterized value.
+func (cb *CompoundBuilder) LimitParam(param types.Param) *CompoundBuilder {
+	if cb.err != nil {
+		return cb
+	}
+	cb.query.Limit = &types.PaginationValue{Param: &param}
+	return cb
+}
+
+// Offset sets the offset for the compound query to a static integer value.
 func (cb *CompoundBuilder) Offset(offset int) *CompoundBuilder {
 	if cb.err != nil {
 		return cb
 	}
-	cb.query.Offset = &offset
+	cb.query.Offset = &types.PaginationValue{Static: &offset}
+	return cb
+}
+
+// OffsetParam sets the offset for the compound query to a parameterized value.
+func (cb *CompoundBuilder) OffsetParam(param types.Param) *CompoundBuilder {
+	if cb.err != nil {
+		return cb
+	}
+	cb.query.Offset = &types.PaginationValue{Param: &param}
 	return cb
 }
 
@@ -792,6 +846,24 @@ func (cb *CompoundBuilder) Render() (*QueryResult, error) {
 // MustRender builds and renders the compound query or panics on error.
 func (cb *CompoundBuilder) MustRender() *QueryResult {
 	result, err := cb.Render()
+	if err != nil {
+		panic(err)
+	}
+	return result
+}
+
+// RenderWith builds and renders the compound query using the provided renderer.
+func (cb *CompoundBuilder) RenderWith(renderer Renderer) (*QueryResult, error) {
+	query, err := cb.Build()
+	if err != nil {
+		return nil, err
+	}
+	return renderer.RenderCompound(query)
+}
+
+// MustRenderWith builds and renders the compound query with the provided renderer, or panics on error.
+func (cb *CompoundBuilder) MustRenderWith(renderer Renderer) *QueryResult {
+	result, err := cb.RenderWith(renderer)
 	if err != nil {
 		panic(err)
 	}

@@ -120,7 +120,7 @@ func isValidSQLIdentifier(s string) bool {
 
 	// Must start with letter or underscore
 	first := s[0]
-	if !((first >= 'a' && first <= 'z') ||
+	if !((first >= 'a' && first <= 'z') || //nolint:staticcheck // readability over De Morgan
 		(first >= 'A' && first <= 'Z') ||
 		first == '_') {
 		return false
@@ -129,7 +129,7 @@ func isValidSQLIdentifier(s string) bool {
 	// Rest must be alphanumeric or underscore
 	for i := 1; i < len(s); i++ {
 		ch := s[i]
-		if !((ch >= 'a' && ch <= 'z') ||
+		if !((ch >= 'a' && ch <= 'z') || //nolint:staticcheck // readability over De Morgan
 			(ch >= 'A' && ch <= 'Z') ||
 			(ch >= '0' && ch <= '9') ||
 			ch == '_') {

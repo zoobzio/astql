@@ -9,9 +9,9 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/zoobzio/astql)](go.mod)
 [![Release](https://img.shields.io/github/v/release/zoobzio/astql)](https://github.com/zoobzio/astql/releases)
 
-Type-safe SQL query builder for PostgreSQL with DBML schema validation.
+Type-safe SQL query builder with DBML schema validation.
 
-Build queries as an AST, validate against your schema, render to parameterized SQL.
+Build queries as an AST, validate against your schema, render to parameterized SQL. Supports PostgreSQL, SQLite, MySQL, and SQL Server.
 
 ## Three Steps
 
@@ -106,9 +106,27 @@ field, err := instance.TryF(fieldName)
 
 - **Schema-validated** — Tables and fields checked against DBML at build time
 - **Injection-resistant** — Parameterized queries, quoted identifiers, no string interpolation
-- **PostgreSQL-native** — Full support for RETURNING, ON CONFLICT, pgvector, window functions
+- **Multi-provider** — PostgreSQL, SQLite, MySQL, SQL Server with dialect-specific rendering
 - **Type-safe** — Instance-based API prevents direct struct construction
-- **Composable** — Subqueries, JOINs, CASE expressions, aggregates
+- **Composable** — Subqueries, JOINs, CASE expressions, aggregates, string/date functions
+
+## Providers
+
+Default rendering uses PostgreSQL syntax. Use `RenderWith()` for other databases:
+
+```go
+import (
+    "github.com/zoobzio/astql/pkg/sqlite"
+    "github.com/zoobzio/astql/pkg/mysql"
+    "github.com/zoobzio/astql/pkg/mssql"
+)
+
+result, _ := query.RenderWith(sqlite.New())  // SQLite
+result, _ := query.RenderWith(mysql.New())   // MySQL
+result, _ := query.RenderWith(mssql.New())   // SQL Server
+```
+
+Each provider handles dialect differences automatically (quoting, date functions, pagination syntax, etc.).
 
 ## Documentation
 

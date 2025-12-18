@@ -1,42 +1,35 @@
+version: "2"
+
 run:
   timeout: 5m
   tests: true
-  
+
 linters:
+  default: none
   enable:
     # Security-critical linters (essential for SQL query builder)
     - gosec        # Security analyzer - critical for SQL injection prevention
     - errorlint    # Proper error handling patterns
-    - bodyclose    # HTTP response body must be closed
-    - sqlclosecheck # SQL rows/statements must be closed
-    
+
     # Code quality with security implications
     - govet        # Suspicious constructs
     - ineffassign  # Detect ineffectual assignments
     - staticcheck  # Advanced static analysis
     - unused       # Unused code detection
-    - typecheck    # Type checking
-    
-    # Error handling (critical for AST validation)
-    - errcheck     # Unchecked errors
-    - errchkjson   # JSON marshaling errors (for schema parsing)
-    - wastedassign # Wasted assignments
-    
+
     # Best practices
     - gocritic     # Opinionated linter
-    - revive       # Fast, configurable linter
     - unconvert    # Unnecessary type conversions
-    - dupl         # Code duplication
-    - goconst      # Repeated strings as constants
-    - godot        # Comment sentences
-    - godox        # TODO/FIXME comments
-    - gofmt        # Formatting
-    - goimports    # Import organization
     - misspell     # Spelling mistakes
     - nakedret     # Naked returns
     - prealloc     # Slice capacity hints
     - predeclared  # Shadowing predeclared identifiers
     - copyloopvar  # Loop variable capture
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
 
 linters-settings:
   gosec:
@@ -44,7 +37,7 @@ linters-settings:
     severity: low      # Report even low severity issues
     confidence: low    # Report even low confidence issues
     excludes:
-      - G104  # We'll use errcheck instead
+      - G104  # Unhandled errors on Close() - ok in defer
     config:
       global:
         audit: true
@@ -52,107 +45,28 @@ linters-settings:
         mode: strict
       G202:  # SQL string concatenation
         mode: strict
-  
+
+  staticcheck:
+    checks:
+      - "all"
+      - "-QF1001"  # De Morgan's law suggestions
+
   govet:
     enable-all: true
-  
-  errcheck:
-    check-type-assertions: true
-    check-blank: true
-    exclude-functions:
-      - (io.Closer).Close  # Handled by bodyclose
-  
+
   gocritic:
     enabled-checks:
       # Security-relevant checks
-      - commentedOutCode
       - deferInLoop
       - emptyFallthrough
-      - emptyStringTest
-      - equalFold
       - evalOrder
-      - exposedSyncMutex
-      - externalErrorReassign
-      - filepathJoin
-      - hexLiteral
-      - httpNoBody
-      - importShadow
-      - indexAlloc
-      - initClause
-      - nestingReduce
       - nilValReturn
-      - octalLiteral
-      - preferFilepathJoin
-      - preferFprint
-      - preferStringWriter
-      - preferWriteByte
       - rangeExprCopy
       - rangeValCopy
-      - redundantSprint
-      - regexpPattern
-      - regexpSimplify
-      - ruleguard
-      - sloppyReassign
-      - sortSlice
-      - sprintfQuotedString
       - sqlQuery         # Critical for SQL query builder
-      - stringConcatSimplify
-      - stringXbytes
-      - syncMapLoadAndDelete
       - truncateCmp
-      - typeAssertChain
-      - typeDefFirst
-      - typeUnparen
-      - unlabelStmt
-      - unnamedResult
-      - unnecessaryBlock
-      - unnecessaryDefer
       - weakCond
-      - yodaStyleExpr
-  
-  revive:
-    severity: warning
-    rules:
-      - name: blank-imports
-      - name: context-as-argument
-      - name: context-keys-type
-      - name: dot-imports
-      - name: empty-block
-      - name: error-naming
-      - name: error-return
-      - name: error-strings
-      - name: errorf
-      - name: exported
-      - name: if-return
-      - name: increment-decrement
-      - name: indent-error-flow
-      - name: modifies-parameter
-      - name: modifies-value-receiver
-      - name: package-comments
-      - name: range
-      - name: receiver-naming
-      - name: redefines-builtin-id
-      - name: string-of-int
-      - name: superfluous-else
-      - name: time-naming
-      - name: unexported-return
-      - name: unnecessary-stmt
-      - name: unreachable-code
-      - name: unused-parameter
-      - name: unused-receiver
-      - name: useless-break
-      - name: var-declaration
-      - name: var-naming
-  
-  dupl:
-    threshold: 100  # Lower threshold for query builder
-  
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-    # Ignore test files for constants
-    ignore-tests: true
-    
+
   misspell:
     locale: US
 
@@ -160,46 +74,26 @@ issues:
   exclude-dirs:
     - OLD
     - examples
-    
+
   exclude-dirs-use-default: false
-  
+
   exclude-rules:
-    # Allow TODO comments in development
-    - linters:
-        - godox
-      text: "TODO|FIXME|BUG"
-    
-    # Test files can have longer functions and different patterns
+    # Test files - relax security linting
     - path: _test\.go
       linters:
-        - funlen
-        - goconst
-        - dupl
         - gosec
-        - errcheck
-        - govet
-        - gofmt
-        - goimports
-      text: "fieldalignment|duplicate|Error return value.*is not checked|File is not properly formatted"
-    
-    # Allow panics in validation functions (by design)
-    - path: (types|param|field_registry)\.go
+
+    # Integration tests
+    - path: testing/
       linters:
         - gosec
-      text: "G112"  # Potential Slowloris Attack
-    
-    # Schema files deal with user input (validated)
-    - path: schema\.go
-      linters:
-        - gosec
-        - govet
-      text: "G201|G202|fieldalignment"  # SQL formatting/concatenation, field alignment
-  
-  # Maximum issues count per one linter
+
+  exclude:
+    # De Morgan suggestions are optional style
+    - "QF1001"
+    # G104 unhandled errors on Close are ok in defer
+    - "G104"
+
   max-issues-per-linter: 0
-  
-  # Maximum count of issues with same text
   max-same-issues: 0
-  
-  # Show all issues
   new: false

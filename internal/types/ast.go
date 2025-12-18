@@ -40,6 +40,13 @@ type OrderBy struct {
 	Param    Param
 }
 
+// PaginationValue represents a LIMIT or OFFSET value that can be
+// either a static integer or a parameterized value.
+type PaginationValue struct {
+	Static *int   // Static integer value
+	Param  *Param // Parameterized value (takes precedence if set)
+}
+
 // LockMode represents row-level locking modes (PostgreSQL).
 type LockMode string
 
@@ -105,6 +112,8 @@ type FieldExpression struct {
 	Coalesce  *CoalesceExpression // For COALESCE expressions
 	NullIf    *NullIfExpression   // For NULLIF expressions
 	Math      *MathExpression     // For math functions
+	String    *StringExpression   // For string functions
+	Date      *DateExpression     // For date/time functions
 	Cast      *CastExpression     // For type casting
 	Window    *WindowExpression   // For window functions
 	Alias     string
@@ -155,6 +164,67 @@ type MathExpression struct {
 	Precision *Param // Optional, for ROUND
 	Exponent  *Param // Optional, for POWER
 	Alias     string
+}
+
+// StringFunc represents SQL string functions.
+type StringFunc string
+
+const (
+	StringUpper     StringFunc = "UPPER"
+	StringLower     StringFunc = "LOWER"
+	StringTrim      StringFunc = "TRIM"
+	StringLTrim     StringFunc = "LTRIM"
+	StringRTrim     StringFunc = "RTRIM"
+	StringLength    StringFunc = "LENGTH"
+	StringSubstring StringFunc = "SUBSTRING"
+	StringReplace   StringFunc = "REPLACE"
+	StringConcat    StringFunc = "CONCAT"
+)
+
+// StringExpression represents a string function call.
+type StringExpression struct {
+	Function StringFunc
+	Field    Field   // Primary field/column
+	Args     []Param // Additional arguments (for SUBSTRING, REPLACE, CONCAT)
+	Fields   []Field // Additional fields (for CONCAT with multiple fields)
+	Alias    string
+}
+
+// DateFunc represents SQL date/time functions.
+type DateFunc string
+
+const (
+	DateNow              DateFunc = "NOW"
+	DateCurrentDate      DateFunc = "CURRENT_DATE"
+	DateCurrentTime      DateFunc = "CURRENT_TIME"
+	DateCurrentTimestamp DateFunc = "CURRENT_TIMESTAMP"
+	DateExtract          DateFunc = "EXTRACT"
+	DateTrunc            DateFunc = "DATE_TRUNC"
+)
+
+// DatePart represents date/time parts for EXTRACT and DATE_TRUNC.
+type DatePart string
+
+const (
+	PartYear      DatePart = "YEAR"
+	PartMonth     DatePart = "MONTH"
+	PartDay       DatePart = "DAY"
+	PartHour      DatePart = "HOUR"
+	PartMinute    DatePart = "MINUTE"
+	PartSecond    DatePart = "SECOND"
+	PartWeek      DatePart = "WEEK"
+	PartQuarter   DatePart = "QUARTER"
+	PartDayOfWeek DatePart = "DOW"
+	PartDayOfYear DatePart = "DOY"
+	PartEpoch     DatePart = "EPOCH"
+)
+
+// DateExpression represents a date/time function call.
+type DateExpression struct {
+	Function DateFunc
+	Field    *Field   // Optional - not needed for NOW, CURRENT_DATE, etc.
+	Part     DatePart // For EXTRACT and DATE_TRUNC
+	Alias    string
 }
 
 // CastType represents allowed PostgreSQL data types for casting.
@@ -249,8 +319,8 @@ type SetOperand struct {
 // CompoundQuery represents a query with set operations.
 type CompoundQuery struct {
 	Base     *AST
-	Limit    *int
-	Offset   *int
+	Limit    *PaginationValue
+	Offset   *PaginationValue
 	Operands []SetOperand
 	Ordering []OrderBy
 }
@@ -297,8 +367,8 @@ type AST struct {
 	WhereClause      ConditionItem
 	Lock             *LockMode
 	OnConflict       *ConflictClause
-	Limit            *int
-	Offset           *int
+	Limit            *PaginationValue
+	Offset           *PaginationValue
 	Updates          map[Field]Param
 	Target           Table
 	Operation        Operation

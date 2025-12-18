@@ -1,5 +1,4 @@
-// Package astql provides a type-safe SQL query builder that produces
-// parameterized queries for PostgreSQL.
+// Package astql provides a type-safe SQL query builder with multi-provider support.
 //
 // The package generates an Abstract Syntax Tree (AST) from fluent builder
 // calls, then renders it to SQL with named parameters compatible with sqlx.
@@ -18,6 +17,17 @@
 //	result, err := query.Render()
 //	// result.SQL: SELECT "field1", "field2" FROM "table" WHERE ... ORDER BY "field1" ASC LIMIT 10
 //	// result.RequiredParams: []string{"param_name", ...}
+//
+// # Multi-Provider Support
+//
+// The package supports multiple SQL dialects through the Renderer interface.
+// The default Render() method uses PostgreSQL, but you can use RenderWith()
+// for explicit provider selection:
+//
+//	import "github.com/zoobzio/astql/pkg/postgres"
+//
+//	pg := postgres.New()
+//	result, err := query.RenderWith(pg)
 //
 // # Schema-Validated Usage
 //
@@ -52,10 +62,7 @@ import "github.com/zoobzio/astql/internal/types"
 type AST = types.AST
 
 // QueryResult contains the rendered SQL and required parameters.
-type QueryResult struct {
-	SQL            string
-	RequiredParams []string
-}
+type QueryResult = types.QueryResult
 
 // Operation represents the type of query operation.
 type Operation = types.Operation

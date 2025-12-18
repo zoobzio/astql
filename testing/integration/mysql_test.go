@@ -1,0 +1,928 @@
+// Package integration provides integration tests for astql using real databases.
+package integration
+
+import (
+	"context"
+	"database/sql"
+	"strings"
+	"testing"
+	"time"
+
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/mysql"
+	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/zoobzio/astql"
+	astqlmysql "github.com/zoobzio/astql/pkg/mysql"
+	"github.com/zoobzio/dbml"
+)
+
+// MySQLContainer wraps a testcontainers MySQL instance.
+type MySQLContainer struct {
+	container *mysql.MySQLContainer
+	db        *sql.DB
+	connStr   string
+}
+
+// NewMySQLContainer creates and starts a MySQL container for testing.
+func NewMySQLContainer(ctx context.Context, t *testing.T) *MySQLContainer {
+	t.Helper()
+
+	container, err := mysql.Run(ctx,
+		"docker.io/mysql:8.0",
+		mysql.WithDatabase("astql_test"),
+		mysql.WithUsername("test"),
+		mysql.WithPassword("test"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("port: 3306  MySQL Community Server").
+				WithStartupTimeout(60*time.Second),
+		),
+	)
+	if err != nil {
+		t.Fatalf("Failed to start mysql container: %v", err)
+	}
+
+	connStr, err := container.ConnectionString(ctx)
+	if err != nil {
+		t.Fatalf("Failed to get connection string: %v", err)
+	}
+
+	db, err := sql.Open("mysql", connStr)
+	if err != nil {
+		t.Fatalf("Failed to connect to mysql: %v", err)
+	}
+
+	// Wait for connection to be ready
+	for i := 0; i < 30; i++ {
+		if err := db.Ping(); err == nil {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+
+	return &MySQLContainer{
+		container: container,
+		db:        db,
+		connStr:   connStr,
+	}
+}
+
+// Close terminates the MySQL container.
+func (mc *MySQLContainer) Close(ctx context.Context, t *testing.T) {
+	t.Helper()
+	if mc.db != nil {
+		_ = mc.db.Close()
+	}
+	if mc.container != nil {
+		if err := mc.container.Terminate(ctx); err != nil {
+			t.Logf("Warning: failed to terminate container: %v", err)
+		}
+	}
+}
+
+// Exec executes a SQL statement.
+func (mc *MySQLContainer) Exec(ctx context.Context, t *testing.T, sql string, args ...any) {
+	t.Helper()
+	_, err := mc.db.ExecContext(ctx, sql, args...)
+	if err != nil {
+		t.Fatalf("Failed to execute SQL: %v\nSQL: %s", err, sql)
+	}
+}
+
+// QueryRow executes a query and returns a single row.
+func (mc *MySQLContainer) QueryRow(ctx context.Context, t *testing.T, sql string, args ...any) *sql.Row {
+	t.Helper()
+	return mc.db.QueryRowContext(ctx, sql, args...)
+}
+
+// Query executes a query and returns rows.
+func (mc *MySQLContainer) Query(ctx context.Context, t *testing.T, sql string, args ...any) *sql.Rows {
+	t.Helper()
+	rows, err := mc.db.QueryContext(ctx, sql, args...)
+	if err != nil {
+		t.Fatalf("Failed to execute query: %v\nSQL: %s", err, sql)
+	}
+	return rows
+}
+
+// createMySQLTestInstance creates an ASTQL instance matching the test database schema.
+func createMySQLTestInstance(t *testing.T) *astql.ASTQL {
+	t.Helper()
+
+	project := dbml.NewProject("test")
+
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("id", "bigint"))
+	users.AddColumn(dbml.NewColumn("username", "varchar"))
+	users.AddColumn(dbml.NewColumn("email", "varchar"))
+	users.AddColumn(dbml.NewColumn("age", "int"))
+	users.AddColumn(dbml.NewColumn("active", "boolean"))
+	project.AddTable(users)
+
+	posts := dbml.NewTable("posts")
+	posts.AddColumn(dbml.NewColumn("id", "bigint"))
+	posts.AddColumn(dbml.NewColumn("user_id", "bigint"))
+	posts.AddColumn(dbml.NewColumn("title", "varchar"))
+	posts.AddColumn(dbml.NewColumn("views", "int"))
+	posts.AddColumn(dbml.NewColumn("published", "boolean"))
+	project.AddTable(posts)
+
+	orders := dbml.NewTable("orders")
+	orders.AddColumn(dbml.NewColumn("id", "bigint"))
+	orders.AddColumn(dbml.NewColumn("user_id", "bigint"))
+	orders.AddColumn(dbml.NewColumn("total", "decimal"))
+	orders.AddColumn(dbml.NewColumn("status", "varchar"))
+	project.AddTable(orders)
+
+	instance, err := astql.NewFromDBML(project)
+	if err != nil {
+		t.Fatalf("Failed to create instance: %v", err)
+	}
+	return instance
+}
+
+// setupMySQLSchema creates the test database schema.
+func setupMySQLSchema(ctx context.Context, t *testing.T, mc *MySQLContainer) {
+	t.Helper()
+
+	mc.Exec(ctx, t, `
+		CREATE TABLE IF NOT EXISTS users (
+			id BIGINT AUTO_INCREMENT PRIMARY KEY,
+			username VARCHAR(255) NOT NULL,
+			email VARCHAR(255) NOT NULL UNIQUE,
+			age INT,
+			active BOOLEAN DEFAULT true
+		)
+	`)
+
+	mc.Exec(ctx, t, `
+		CREATE TABLE IF NOT EXISTS posts (
+			id BIGINT AUTO_INCREMENT PRIMARY KEY,
+			user_id BIGINT,
+			title VARCHAR(255) NOT NULL,
+			views INT DEFAULT 0,
+			published BOOLEAN DEFAULT false,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+	`)
+
+	mc.Exec(ctx, t, `
+		CREATE TABLE IF NOT EXISTS orders (
+			id BIGINT AUTO_INCREMENT PRIMARY KEY,
+			user_id BIGINT,
+			total DECIMAL(10,2) NOT NULL,
+			status VARCHAR(50) DEFAULT 'pending',
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+	`)
+}
+
+// seedMySQLData inserts test data.
+func seedMySQLData(ctx context.Context, t *testing.T, mc *MySQLContainer) {
+	t.Helper()
+
+	mc.Exec(ctx, t, `
+		INSERT INTO users (id, username, email, age, active) VALUES
+		(1, 'alice', 'alice@example.com', 30, true),
+		(2, 'bob', 'bob@example.com', 25, true),
+		(3, 'charlie', 'charlie@example.com', 35, false),
+		(4, 'diana', 'diana@example.com', 28, true)
+	`)
+
+	mc.Exec(ctx, t, `
+		INSERT INTO posts (id, user_id, title, views, published) VALUES
+		(1, 1, 'First Post', 100, true),
+		(2, 1, 'Second Post', 50, true),
+		(3, 2, 'Bobs Post', 75, true),
+		(4, 3, 'Draft Post', 0, false)
+	`)
+
+	mc.Exec(ctx, t, `
+		INSERT INTO orders (id, user_id, total, status) VALUES
+		(1, 1, 99.99, 'completed'),
+		(2, 1, 149.99, 'completed'),
+		(3, 2, 49.99, 'pending'),
+		(4, 4, 199.99, 'completed')
+	`)
+}
+
+// convertMySQLParams converts astql named parameters to MySQL positional parameters.
+// Parameters are extracted in the order they appear in the SQL string.
+func convertMySQLParams(sqlStr string, params map[string]any) (string, []any) {
+	args := make([]any, 0)
+	result := strings.Builder{}
+
+	i := 0
+	for i < len(sqlStr) {
+		if sqlStr[i] == ':' {
+			// Find end of parameter name
+			j := i + 1
+			for j < len(sqlStr) && (isAlphaNumeric(sqlStr[j]) || sqlStr[j] == '_') {
+				j++
+			}
+			if j > i+1 {
+				paramName := sqlStr[i+1 : j]
+				if value, ok := params[paramName]; ok {
+					result.WriteByte('?')
+					args = append(args, value)
+					i = j
+					continue
+				}
+			}
+		}
+		result.WriteByte(sqlStr[i])
+		i++
+	}
+
+	return result.String(), args
+}
+
+func isAlphaNumeric(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
+
+// TestMySQLIntegration_BasicSelect tests basic SELECT queries against MySQL.
+func TestMySQLIntegration_BasicSelect(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	mc := NewMySQLContainer(ctx, t)
+	defer mc.Close(ctx, t)
+
+	setupMySQLSchema(ctx, t, mc)
+	seedMySQLData(ctx, t, mc)
+
+	instance := createMySQLTestInstance(t)
+	renderer := astqlmysql.New()
+
+	result, err := astql.Select(instance.T("users")).RenderWith(renderer)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	rows := mc.Query(ctx, t, result.SQL)
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		count++
+	}
+	if count != 4 {
+		t.Errorf("Expected 4 users, got %d", count)
+	}
+}
+
+// TestMySQLIntegration_SelectWithWhere tests WHERE clause against MySQL.
+func TestMySQLIntegration_SelectWithWhere(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	mc := NewMySQLContainer(ctx, t)
+	defer mc.Close(ctx, t)
+
+	setupMySQLSchema(ctx, t, mc)
+	seedMySQLData(ctx, t, mc)
+
+	instance := createMySQLTestInstance(t)
+	renderer := astqlmysql.New()
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("username")).
+		Where(instance.C(instance.F("active"), astql.EQ, instance.P("is_active"))).
+		RenderWith(renderer)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	sql, args := convertMySQLParams(result.SQL, map[string]any{"is_active": true})
+	rows := mc.Query(ctx, t, sql, args...)
+	defer rows.Close()
+
+	var usernames []string
+	for rows.Next() {
+		var username string
+		if err := rows.Scan(&username); err != nil {
+			t.Fatalf("Scan failed: %v", err)
+		}
+		usernames = append(usernames, username)
+	}
+
+	if len(usernames) != 3 {
+		t.Errorf("Expected 3 active users, got %d: %v", len(usernames), usernames)
+	}
+}
+
+// TestMySQLIntegration_Insert tests INSERT operations against MySQL.
+func TestMySQLIntegration_Insert(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	mc := NewMySQLContainer(ctx, t)
+	defer mc.Close(ctx, t)
+
+	setupMySQLSchema(ctx, t, mc)
+
+	instance := createMySQLTestInstance(t)
+	renderer := astqlmysql.New()
+
+	vm := instance.ValueMap()
+	vm[instance.F("username")] = instance.P("username")
+	vm[instance.F("email")] = instance.P("email")
+	vm[instance.F("age")] = instance.P("age")
+
+	result, err := astql.Insert(instance.T("users")).
+		Values(vm).
+		RenderWith(renderer)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	sql, args := convertMySQLParams(result.SQL, map[string]any{
+		"username": "newuser",
+		"email":    "newuser@example.com",
+		"age":      42,
+	})
+
+	mc.Exec(ctx, t, sql, args...)
+
+	// Verify insert
+	var count int
+	row := mc.QueryRow(ctx, t, "SELECT COUNT(*) FROM users WHERE username = 'newuser'")
+	if err := row.Scan(&count); err != nil {
+		t.Fatalf("Scan failed: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Expected 1 user, got %d", count)
+	}
+}
+
+// TestMySQLIntegration_OnDuplicateKeyUpdate tests upsert against MySQL.
+func TestMySQLIntegration_OnDuplicateKeyUpdate(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	mc := NewMySQLContainer(ctx, t)
+	defer mc.Close(ctx, t)
+
+	setupMySQLSchema(ctx, t, mc)
+	seedMySQLData(ctx, t, mc)
+
+	instance := createMySQLTestInstance(t)
+	renderer := astqlmysql.New()
+
+	vm := instance.ValueMap()
+	vm[instance.F("username")] = instance.P("username")
+	vm[instance.F("email")] = instance.P("email")
+	vm[instance.F("age")] = instance.P("age")
+
+	result, err := astql.Insert(instance.T("users")).
+		Values(vm).
+		OnConflict(instance.F("email")).
+		DoUpdate().
+		Set(instance.F("age"), instance.P("new_age")).
+		Build().
+		RenderWith(renderer)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	// Try to insert with existing email, should update age
+	sql, args := convertMySQLParams(result.SQL, map[string]any{
+		"username": "alice_dup",
+		"email":    "alice@example.com", // existing email
+		"age":      99,
+		"new_age":  99,
+	})
+
+	mc.Exec(ctx, t, sql, args...)
+
+	// Verify update happened
+	var age int
+	row := mc.QueryRow(ctx, t, "SELECT age FROM users WHERE email = 'alice@example.com'")
+	if err := row.Scan(&age); err != nil {
+		t.Fatalf("Scan failed: %v", err)
+	}
+	if age != 99 {
+		t.Errorf("Expected age 99, got %d", age)
+	}
+}
+
+// TestMySQLIntegration_Update tests UPDATE operations against MySQL.
+func TestMySQLIntegration_Update(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	mc := NewMySQLContainer(ctx, t)
+	defer mc.Close(ctx, t)
+
+	setupMySQLSchema(ctx, t, mc)
+	seedMySQLData(ctx, t, mc)
+
+	instance := createMySQLTestInstance(t)
+	renderer := astqlmysql.New()
+
+	result, err := astql.Update(instance.T("users")).
+		Set(instance.F("age"), instance.P("new_age")).
+		Where(instance.C(instance.F("username"), astql.EQ, instance.P("username"))).
+		RenderWith(renderer)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	sql, args := convertMySQLParams(result.SQL, map[string]any{
+		"new_age":  99,
+		"username": "alice",
+	})
+
+	mc.Exec(ctx, t, sql, args...)
+
+	// Verify update
+	var age int
+	row := mc.QueryRow(ctx, t, "SELECT age FROM users WHERE username = 'alice'")
+	if err := row.Scan(&age); err != nil {
+		t.Fatalf("Scan failed: %v", err)
+	}
+	if age != 99 {
+		t.Errorf("Expected age 99, got %d", age)
+	}
+}
+
+// TestMySQLIntegration_Delete tests DELETE operations against MySQL.
+func TestMySQLIntegration_Delete(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	mc := NewMySQLContainer(ctx, t)
+	defer mc.Close(ctx, t)
+
+	setupMySQLSchema(ctx, t, mc)
+	seedMySQLData(ctx, t, mc)
+
+	instance := createMySQLTestInstance(t)
+	renderer := astqlmysql.New()
+
+	result, err := astql.Delete(instance.T("users")).
+		Where(instance.C(instance.F("active"), astql.EQ, instance.P("is_active"))).
+		RenderWith(renderer)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	sql, args := convertMySQLParams(result.SQL, map[string]any{"is_active": false})
+	mc.Exec(ctx, t, sql, args...)
+
+	// Verify deletion
+	var count int
+	row := mc.QueryRow(ctx, t, "SELECT COUNT(*) FROM users")
+	if err := row.Scan(&count); err != nil {
+		t.Fatalf("Scan failed: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("Expected 3 users after delete, got %d", count)
+	}
+}
+
+// TestMySQLIntegration_Join tests JOIN operations against MySQL.
+func TestMySQLIntegration_Join(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	mc := NewMySQLContainer(ctx, t)
+	defer mc.Close(ctx, t)
+
+	setupMySQLSchema(ctx, t, mc)
+	seedMySQLData(ctx, t, mc)
+
+	instance := createMySQLTestInstance(t)
+	renderer := astqlmysql.New()
+
+	result, err := astql.Select(instance.T("users", "u")).
+		Fields(
+			instance.WithTable(instance.F("username"), "u"),
+			instance.WithTable(instance.F("title"), "p"),
+		).
+		InnerJoin(
+			instance.T("posts", "p"),
+			astql.CF(
+				instance.WithTable(instance.F("id"), "u"),
+				astql.EQ,
+				instance.WithTable(instance.F("user_id"), "p"),
+			),
+		).
+		Where(instance.C(
+			instance.WithTable(instance.F("published"), "p"),
+			astql.EQ,
+			instance.P("is_published"),
+		)).
+		RenderWith(renderer)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	sql, args := convertMySQLParams(result.SQL, map[string]any{"is_published": true})
+	rows := mc.Query(ctx, t, sql, args...)
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		count++
+	}
+	if count != 3 {
+		t.Errorf("Expected 3 published posts, got %d", count)
+	}
+}
+
+// TestMySQLIntegration_Aggregates tests aggregate functions against MySQL.
+func TestMySQLIntegration_Aggregates(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	mc := NewMySQLContainer(ctx, t)
+	defer mc.Close(ctx, t)
+
+	setupMySQLSchema(ctx, t, mc)
+	seedMySQLData(ctx, t, mc)
+
+	instance := createMySQLTestInstance(t)
+	renderer := astqlmysql.New()
+
+	result, err := astql.Select(instance.T("posts")).
+		Fields(instance.F("user_id")).
+		SelectExpr(astql.As(astql.CountStar(), "post_count")).
+		GroupBy(instance.F("user_id")).
+		HavingAgg(astql.HavingCount(astql.GT, instance.P("min_count"))).
+		RenderWith(renderer)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	sql, args := convertMySQLParams(result.SQL, map[string]any{"min_count": 1})
+	rows := mc.Query(ctx, t, sql, args...)
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		count++
+	}
+	// Only alice has more than 1 post
+	if count != 1 {
+		t.Errorf("Expected 1 user with >1 posts, got %d", count)
+	}
+}
+
+// TestMySQLIntegration_OrderByLimit tests ORDER BY and LIMIT against MySQL.
+func TestMySQLIntegration_OrderByLimit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	mc := NewMySQLContainer(ctx, t)
+	defer mc.Close(ctx, t)
+
+	setupMySQLSchema(ctx, t, mc)
+	seedMySQLData(ctx, t, mc)
+
+	instance := createMySQLTestInstance(t)
+	renderer := astqlmysql.New()
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("username"), instance.F("age")).
+		OrderBy(instance.F("age"), astql.DESC).
+		Limit(2).
+		RenderWith(renderer)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	rows := mc.Query(ctx, t, result.SQL)
+	defer rows.Close()
+
+	var ages []int
+	for rows.Next() {
+		var username string
+		var age int
+		if err := rows.Scan(&username, &age); err != nil {
+			t.Fatalf("Scan failed: %v", err)
+		}
+		ages = append(ages, age)
+	}
+
+	if len(ages) != 2 {
+		t.Fatalf("Expected 2 users, got %d", len(ages))
+	}
+	if ages[0] != 35 || ages[1] != 30 {
+		t.Errorf("Expected ages [35, 30], got %v", ages)
+	}
+}
+
+// TestMySQLIntegration_ForUpdate tests row locking against MySQL.
+func TestMySQLIntegration_ForUpdate(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	mc := NewMySQLContainer(ctx, t)
+	defer mc.Close(ctx, t)
+
+	setupMySQLSchema(ctx, t, mc)
+	seedMySQLData(ctx, t, mc)
+
+	instance := createMySQLTestInstance(t)
+	renderer := astqlmysql.New()
+
+	// Start a transaction
+	tx, err := mc.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("Begin transaction failed: %v", err)
+	}
+	defer tx.Rollback()
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("username")).
+		Where(instance.C(instance.F("id"), astql.EQ, instance.P("user_id"))).
+		ForUpdate().
+		RenderWith(renderer)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	sql, args := convertMySQLParams(result.SQL, map[string]any{"user_id": 1})
+
+	var username string
+	err = tx.QueryRowContext(ctx, sql, args...).Scan(&username)
+	if err != nil {
+		t.Fatalf("Select FOR UPDATE failed: %v", err)
+	}
+
+	if username != "alice" {
+		t.Errorf("Expected username 'alice', got '%s'", username)
+	}
+}
+
+// TestMySQLIntegration_WindowFunction tests window functions against MySQL.
+func TestMySQLIntegration_WindowFunction(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	mc := NewMySQLContainer(ctx, t)
+	defer mc.Close(ctx, t)
+
+	setupMySQLSchema(ctx, t, mc)
+	seedMySQLData(ctx, t, mc)
+
+	instance := createMySQLTestInstance(t)
+	renderer := astqlmysql.New()
+
+	winExpr := astql.RowNumber().
+		OrderBy(instance.F("age"), astql.DESC).
+		As("rank")
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("username"), instance.F("age")).
+		SelectExpr(winExpr).
+		RenderWith(renderer)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	rows := mc.Query(ctx, t, result.SQL)
+	defer rows.Close()
+
+	results := make(map[string]int)
+	for rows.Next() {
+		var username string
+		var age, rank int
+		if err := rows.Scan(&username, &age, &rank); err != nil {
+			t.Fatalf("Scan failed: %v", err)
+		}
+		results[username] = rank
+	}
+
+	if len(results) != 4 {
+		t.Fatalf("Expected 4 users, got %d", len(results))
+	}
+
+	// charlie (35) should be rank 1
+	if results["charlie"] != 1 {
+		t.Errorf("Expected charlie to be rank 1, got %d", results["charlie"])
+	}
+}
+
+// TestMySQLIntegration_CaseExpression tests CASE expressions against MySQL.
+func TestMySQLIntegration_CaseExpression(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	mc := NewMySQLContainer(ctx, t)
+	defer mc.Close(ctx, t)
+
+	setupMySQLSchema(ctx, t, mc)
+	seedMySQLData(ctx, t, mc)
+
+	instance := createMySQLTestInstance(t)
+	renderer := astqlmysql.New()
+
+	caseExpr := astql.Case().
+		When(instance.C(instance.F("age"), astql.LT, instance.P("young_age")), instance.P("young_label")).
+		When(instance.C(instance.F("age"), astql.LT, instance.P("mid_age")), instance.P("mid_label")).
+		Else(instance.P("senior_label")).
+		As("age_group").
+		Build()
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("username")).
+		SelectExpr(caseExpr).
+		RenderWith(renderer)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	sql, args := convertMySQLParams(result.SQL, map[string]any{
+		"young_age":    27,
+		"young_label":  "young",
+		"mid_age":      32,
+		"mid_label":    "middle",
+		"senior_label": "senior",
+	})
+
+	rows := mc.Query(ctx, t, sql, args...)
+	defer rows.Close()
+
+	results := make(map[string]string)
+	for rows.Next() {
+		var username, ageGroup string
+		if err := rows.Scan(&username, &ageGroup); err != nil {
+			t.Fatalf("Scan failed: %v", err)
+		}
+		results[username] = ageGroup
+	}
+
+	expected := map[string]string{
+		"bob":     "young",
+		"diana":   "middle",
+		"alice":   "middle",
+		"charlie": "senior",
+	}
+
+	for user, expectedGroup := range expected {
+		if results[user] != expectedGroup {
+			t.Errorf("Expected %s to be '%s', got '%s'", user, expectedGroup, results[user])
+		}
+	}
+}
+
+// TestMySQLIntegration_Between tests BETWEEN condition against MySQL.
+func TestMySQLIntegration_Between(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	mc := NewMySQLContainer(ctx, t)
+	defer mc.Close(ctx, t)
+
+	setupMySQLSchema(ctx, t, mc)
+	seedMySQLData(ctx, t, mc)
+
+	instance := createMySQLTestInstance(t)
+	renderer := astqlmysql.New()
+
+	result, err := astql.Select(instance.T("users")).
+		Fields(instance.F("username")).
+		Where(astql.Between(instance.F("age"), instance.P("min_age"), instance.P("max_age"))).
+		OrderBy(instance.F("age"), astql.ASC).
+		RenderWith(renderer)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	sql, args := convertMySQLParams(result.SQL, map[string]any{
+		"min_age": 25,
+		"max_age": 30,
+	})
+	rows := mc.Query(ctx, t, sql, args...)
+	defer rows.Close()
+
+	var usernames []string
+	for rows.Next() {
+		var username string
+		if err := rows.Scan(&username); err != nil {
+			t.Fatalf("Scan failed: %v", err)
+		}
+		usernames = append(usernames, username)
+	}
+
+	// bob (25), diana (28), alice (30)
+	if len(usernames) != 3 {
+		t.Errorf("Expected 3 users, got %d: %v", len(usernames), usernames)
+	}
+}
+
+// TestMySQLIntegration_DateNow tests NOW() function against MySQL.
+func TestMySQLIntegration_DateNow(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	mc := NewMySQLContainer(ctx, t)
+	defer mc.Close(ctx, t)
+
+	setupMySQLSchema(ctx, t, mc)
+
+	instance := createMySQLTestInstance(t)
+	renderer := astqlmysql.New()
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Now(), "current_time")).
+		Limit(1).
+		RenderWith(renderer)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	// Just verify the query executes without error
+	row := mc.QueryRow(ctx, t, result.SQL)
+	var timestamp string
+	if err := row.Scan(&timestamp); err != nil {
+		// This might fail if no users - that's ok, just checking SQL validity
+		if err != sql.ErrNoRows {
+			t.Fatalf("Query failed: %v", err)
+		}
+	}
+}
+
+// TestMySQLIntegration_Union tests UNION operations against MySQL.
+func TestMySQLIntegration_Union(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	mc := NewMySQLContainer(ctx, t)
+	defer mc.Close(ctx, t)
+
+	setupMySQLSchema(ctx, t, mc)
+	seedMySQLData(ctx, t, mc)
+
+	instance := createMySQLTestInstance(t)
+	renderer := astqlmysql.New()
+
+	query1 := astql.Select(instance.T("users")).
+		Fields(instance.F("username")).
+		Where(instance.C(instance.F("age"), astql.GT, instance.P("min_age")))
+
+	query2 := astql.Select(instance.T("users")).
+		Fields(instance.F("username")).
+		Where(instance.C(instance.F("active"), astql.EQ, instance.P("is_active")))
+
+	result, err := query1.Union(query2).RenderWith(renderer)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	params := map[string]any{
+		"q0_min_age":   30,
+		"q1_is_active": false,
+	}
+	sql, args := convertMySQLParams(result.SQL, params)
+
+	rows := mc.Query(ctx, t, sql, args...)
+	defer rows.Close()
+
+	var usernames []string
+	for rows.Next() {
+		var username string
+		if err := rows.Scan(&username); err != nil {
+			t.Fatalf("Scan failed: %v", err)
+		}
+		usernames = append(usernames, username)
+	}
+
+	// charlie (35, inactive) should appear once due to UNION dedup
+	if len(usernames) != 1 {
+		t.Errorf("Expected 1 unique user, got %d: %v", len(usernames), usernames)
+	}
+}

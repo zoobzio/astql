@@ -363,11 +363,11 @@ func TestLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
-	if ast.Limit == nil {
+	if ast.Limit == nil || ast.Limit.Static == nil {
 		t.Fatal("Expected Limit to be set")
 	}
-	if *ast.Limit != 10 {
-		t.Errorf("Expected limit 10, got %d", *ast.Limit)
+	if *ast.Limit.Static != 10 {
+		t.Errorf("Expected limit 10, got %d", *ast.Limit.Static)
 	}
 }
 
@@ -381,11 +381,49 @@ func TestOffset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
-	if ast.Offset == nil {
+	if ast.Offset == nil || ast.Offset.Static == nil {
 		t.Fatal("Expected Offset to be set")
 	}
-	if *ast.Offset != 20 {
-		t.Errorf("Expected offset 20, got %d", *ast.Offset)
+	if *ast.Offset.Static != 20 {
+		t.Errorf("Expected offset 20, got %d", *ast.Offset.Static)
+	}
+}
+
+func TestLimitParam(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+	table := instance.T("users")
+	pageSize := instance.P("page_size")
+
+	builder := astql.Select(table).LimitParam(pageSize)
+
+	ast, err := builder.Build()
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if ast.Limit == nil || ast.Limit.Param == nil {
+		t.Fatal("Expected Limit.Param to be set")
+	}
+	if ast.Limit.Param.Name != "page_size" {
+		t.Errorf("Expected limit param 'page_size', got %q", ast.Limit.Param.Name)
+	}
+}
+
+func TestOffsetParam(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+	table := instance.T("users")
+	offset := instance.P("offset")
+
+	builder := astql.Select(table).OffsetParam(offset)
+
+	ast, err := builder.Build()
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if ast.Offset == nil || ast.Offset.Param == nil {
+		t.Fatal("Expected Offset.Param to be set")
+	}
+	if ast.Offset.Param.Name != "offset" {
+		t.Errorf("Expected offset param 'offset', got %q", ast.Offset.Param.Name)
 	}
 }
 

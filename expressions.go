@@ -329,6 +329,179 @@ func Cast(field types.Field, castType types.CastType) types.FieldExpression {
 	}
 }
 
+// String functions
+
+// Upper creates an UPPER string expression.
+// Example: Upper(field) -> UPPER("field")
+func Upper(field types.Field) types.FieldExpression {
+	return types.FieldExpression{
+		String: &types.StringExpression{
+			Function: types.StringUpper,
+			Field:    field,
+		},
+	}
+}
+
+// Lower creates a LOWER string expression.
+// Example: Lower(field) -> LOWER("field")
+func Lower(field types.Field) types.FieldExpression {
+	return types.FieldExpression{
+		String: &types.StringExpression{
+			Function: types.StringLower,
+			Field:    field,
+		},
+	}
+}
+
+// Trim creates a TRIM string expression.
+// Example: Trim(field) -> TRIM("field")
+func Trim(field types.Field) types.FieldExpression {
+	return types.FieldExpression{
+		String: &types.StringExpression{
+			Function: types.StringTrim,
+			Field:    field,
+		},
+	}
+}
+
+// LTrim creates an LTRIM string expression.
+// Example: LTrim(field) -> LTRIM("field")
+func LTrim(field types.Field) types.FieldExpression {
+	return types.FieldExpression{
+		String: &types.StringExpression{
+			Function: types.StringLTrim,
+			Field:    field,
+		},
+	}
+}
+
+// RTrim creates an RTRIM string expression.
+// Example: RTrim(field) -> RTRIM("field")
+func RTrim(field types.Field) types.FieldExpression {
+	return types.FieldExpression{
+		String: &types.StringExpression{
+			Function: types.StringRTrim,
+			Field:    field,
+		},
+	}
+}
+
+// Length creates a LENGTH string expression.
+// Example: Length(field) -> LENGTH("field")
+func Length(field types.Field) types.FieldExpression {
+	return types.FieldExpression{
+		String: &types.StringExpression{
+			Function: types.StringLength,
+			Field:    field,
+		},
+	}
+}
+
+// Substring creates a SUBSTRING string expression.
+// Example: Substring(field, start, length) -> SUBSTRING("field", :start, :length)
+func Substring(field types.Field, start types.Param, length types.Param) types.FieldExpression {
+	return types.FieldExpression{
+		String: &types.StringExpression{
+			Function: types.StringSubstring,
+			Field:    field,
+			Args:     []types.Param{start, length},
+		},
+	}
+}
+
+// Replace creates a REPLACE string expression.
+// Example: Replace(field, search, replacement) -> REPLACE("field", :search, :replacement)
+func Replace(field types.Field, search types.Param, replacement types.Param) types.FieldExpression {
+	return types.FieldExpression{
+		String: &types.StringExpression{
+			Function: types.StringReplace,
+			Field:    field,
+			Args:     []types.Param{search, replacement},
+		},
+	}
+}
+
+// Concat creates a CONCAT string expression with multiple fields.
+// Example: Concat(field1, field2) -> CONCAT("field1", "field2")
+func Concat(fields ...types.Field) types.FieldExpression {
+	if len(fields) == 0 {
+		return types.FieldExpression{}
+	}
+	return types.FieldExpression{
+		String: &types.StringExpression{
+			Function: types.StringConcat,
+			Field:    fields[0],
+			Fields:   fields[1:],
+		},
+	}
+}
+
+// Date/time functions
+
+// Now creates a NOW() date expression returning current timestamp.
+// Example: Now() -> NOW()
+func Now() types.FieldExpression {
+	return types.FieldExpression{
+		Date: &types.DateExpression{
+			Function: types.DateNow,
+		},
+	}
+}
+
+// CurrentDate creates a CURRENT_DATE expression returning current date.
+// Example: CurrentDate() -> CURRENT_DATE
+func CurrentDate() types.FieldExpression {
+	return types.FieldExpression{
+		Date: &types.DateExpression{
+			Function: types.DateCurrentDate,
+		},
+	}
+}
+
+// CurrentTime creates a CURRENT_TIME expression returning current time.
+// Example: CurrentTime() -> CURRENT_TIME
+func CurrentTime() types.FieldExpression {
+	return types.FieldExpression{
+		Date: &types.DateExpression{
+			Function: types.DateCurrentTime,
+		},
+	}
+}
+
+// CurrentTimestamp creates a CURRENT_TIMESTAMP expression.
+// Example: CurrentTimestamp() -> CURRENT_TIMESTAMP
+func CurrentTimestamp() types.FieldExpression {
+	return types.FieldExpression{
+		Date: &types.DateExpression{
+			Function: types.DateCurrentTimestamp,
+		},
+	}
+}
+
+// Extract creates an EXTRACT expression to get a part of a date/time field.
+// Example: Extract(PartYear, field) -> EXTRACT(YEAR FROM "field")
+func Extract(part types.DatePart, field types.Field) types.FieldExpression {
+	return types.FieldExpression{
+		Date: &types.DateExpression{
+			Function: types.DateExtract,
+			Part:     part,
+			Field:    &field,
+		},
+	}
+}
+
+// DateTrunc creates a DATE_TRUNC expression to truncate to specified precision.
+// Example: DateTrunc(PartMonth, field) -> DATE_TRUNC('month', "field")
+func DateTrunc(part types.DatePart, field types.Field) types.FieldExpression {
+	return types.FieldExpression{
+		Date: &types.DateExpression{
+			Function: types.DateTrunc,
+			Part:     part,
+			Field:    &field,
+		},
+	}
+}
+
 // Window functions
 
 // WindowBuilder provides a fluent API for building window function expressions.
