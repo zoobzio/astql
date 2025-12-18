@@ -2,98 +2,57 @@ version: "2"
 
 run:
   timeout: 5m
-  tests: true
 
 linters:
   default: none
   enable:
-    # Security-critical linters (essential for SQL query builder)
-    - gosec        # Security analyzer - critical for SQL injection prevention
-    - errorlint    # Proper error handling patterns
+    - gosec
+    - errorlint
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gocritic
+    - unconvert
+    - misspell
+    - nakedret
+    - prealloc
+    - predeclared
+    - copyloopvar
 
-    # Code quality with security implications
-    - govet        # Suspicious constructs
-    - ineffassign  # Detect ineffectual assignments
-    - staticcheck  # Advanced static analysis
-    - unused       # Unused code detection
+  settings:
+    gosec:
+      excludes:
+        - G104
 
-    # Best practices
-    - gocritic     # Opinionated linter
-    - unconvert    # Unnecessary type conversions
-    - misspell     # Spelling mistakes
-    - nakedret     # Naked returns
-    - prealloc     # Slice capacity hints
-    - predeclared  # Shadowing predeclared identifiers
-    - copyloopvar  # Loop variable capture
+    staticcheck:
+      checks:
+        - "all"
+        - "-QF1001"   # De Morgan's law suggestions
+        - "-ST1000"   # Package comments
+        - "-ST1020"   # Comment format
+        - "-ST1021"   # Comment format
+
+    govet:
+      disable:
+        - fieldalignment  # Struct alignment suggestions
+
+    gocritic:
+      enabled-checks:
+        - deferInLoop
+        - emptyFallthrough
+        - evalOrder
+        - nilValReturn
+        - rangeExprCopy
+        - rangeValCopy
+        - sqlQuery
+        - truncateCmp
+        - weakCond
+
+    misspell:
+      locale: US
 
 formatters:
   enable:
     - gofmt
     - goimports
-
-linters-settings:
-  gosec:
-    # Strict security settings for SQL query builder
-    severity: low      # Report even low severity issues
-    confidence: low    # Report even low confidence issues
-    excludes:
-      - G104  # Unhandled errors on Close() - ok in defer
-    config:
-      global:
-        audit: true
-      G201:  # SQL string formatting
-        mode: strict
-      G202:  # SQL string concatenation
-        mode: strict
-
-  staticcheck:
-    checks:
-      - "all"
-      - "-QF1001"  # De Morgan's law suggestions
-
-  govet:
-    enable-all: true
-
-  gocritic:
-    enabled-checks:
-      # Security-relevant checks
-      - deferInLoop
-      - emptyFallthrough
-      - evalOrder
-      - nilValReturn
-      - rangeExprCopy
-      - rangeValCopy
-      - sqlQuery         # Critical for SQL query builder
-      - truncateCmp
-      - weakCond
-
-  misspell:
-    locale: US
-
-issues:
-  exclude-dirs:
-    - OLD
-    - examples
-
-  exclude-dirs-use-default: false
-
-  exclude-rules:
-    # Test files - relax security linting
-    - path: _test\.go
-      linters:
-        - gosec
-
-    # Integration tests
-    - path: testing/
-      linters:
-        - gosec
-
-  exclude:
-    # De Morgan suggestions are optional style
-    - "QF1001"
-    # G104 unhandled errors on Close are ok in defer
-    - "G104"
-
-  max-issues-per-linter: 0
-  max-same-issues: 0
-  new: false
