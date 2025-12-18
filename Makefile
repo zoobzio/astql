@@ -1,4 +1,4 @@
-.PHONY: test test-race bench lint lint-fix coverage clean install-tools all help check ci
+.PHONY: test test-race test-integration bench lint lint-fix coverage clean install-tools all help check ci
 
 # Default target
 all: test lint
@@ -9,34 +9,46 @@ help:
 	@echo "=========================="
 	@echo ""
 	@echo "Testing & Quality:"
-	@echo "  make test         - Run all tests"
-	@echo "  make test-race    - Run tests with race detector"
-	@echo "  make bench        - Run benchmarks"
-	@echo "  make lint         - Run golangci-lint"
-	@echo "  make lint-fix     - Run golangci-lint with auto-fix"
-	@echo "  make coverage     - Generate coverage report (HTML)"
-	@echo "  make check        - Run tests and lint (quick check)"
+	@echo "  make test             - Run unit tests (fast)"
+	@echo "  make test-race        - Run unit tests with race detector"
+	@echo "  make test-integration - Run integration tests (requires Docker)"
+	@echo "  make test-all         - Run all tests including integration"
+	@echo "  make bench            - Run benchmarks"
+	@echo "  make lint             - Run golangci-lint"
+	@echo "  make lint-fix         - Run golangci-lint with auto-fix"
+	@echo "  make coverage         - Generate coverage report (HTML)"
+	@echo "  make check            - Run tests and lint (quick check)"
 	@echo ""
 	@echo "Other:"
-	@echo "  make install-tools- Install required development tools"
-	@echo "  make clean        - Clean generated files"
-	@echo "  make all          - Run tests and lint (default)"
-	@echo "  make ci           - Full CI simulation"
+	@echo "  make install-tools    - Install required development tools"
+	@echo "  make clean            - Clean generated files"
+	@echo "  make all              - Run tests and lint (default)"
+	@echo "  make ci               - Full CI simulation"
 
-# Run tests
+# Run unit tests only (skip integration tests)
 test:
-	@echo "Running tests..."
+	@echo "Running unit tests..."
+	@go test -v -short ./...
+
+# Run unit tests with race detector
+test-race:
+	@echo "Running unit tests with race detector..."
+	@go test -v -race -short ./...
+
+# Run integration tests only (requires Docker)
+test-integration:
+	@echo "Running integration tests..."
+	@go test -v ./testing/integration/...
+
+# Run all tests including integration
+test-all:
+	@echo "Running all tests..."
 	@go test -v ./...
 
-# Run tests with race detector
-test-race:
-	@echo "Running tests with race detector..."
-	@go test -v -race ./...
-
-# Run benchmarks
+# Run benchmarks (exclude integration test directory)
 bench:
 	@echo "Running benchmarks..."
-	@go test -bench=. -benchmem -benchtime=1s ./...
+	@go test -bench=. -benchmem -benchtime=1s -short ./...
 
 # Run linters
 lint:
@@ -48,10 +60,10 @@ lint-fix:
 	@echo "Running linters with auto-fix..."
 	@golangci-lint run --config=.golangci.yml --fix
 
-# Generate coverage report
+# Generate coverage report (unit tests only)
 coverage:
 	@echo "Generating coverage report..."
-	@go test -coverprofile=coverage.out ./...
+	@go test -short -coverprofile=coverage.out ./...
 	@go tool cover -html=coverage.out -o coverage.html
 	@go tool cover -func=coverage.out | tail -1
 	@echo "Coverage report generated: coverage.html"

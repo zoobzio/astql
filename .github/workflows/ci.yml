@@ -51,17 +51,15 @@ jobs:
         go-version: '1.24'
 
     - name: golangci-lint
-      uses: golangci/golangci-lint-action@v6
+      uses: golangci/golangci-lint-action@v8
       with:
-        version: v1.64.8
-        args: --config=.golangci.yml --timeout=5m
-        skip-cache: false
-        skip-save-cache: false
+        version: v2.1.6
+        args: --timeout=5m
     
     - name: Security Report
       if: always()
       run: |
-        golangci-lint run --config=.golangci.yml --out-format=json > lint-report.json || true
+        golangci-lint run --out-format=json > lint-report.json || true
         echo "### Security Scan Summary" >> $GITHUB_STEP_SUMMARY
         echo "Linters with findings:" >> $GITHUB_STEP_SUMMARY
         jq -r '.Issues[] | .FromLinter' lint-report.json 2>/dev/null | sort | uniq -c | sort -nr >> $GITHUB_STEP_SUMMARY || echo "No issues found ✅" >> $GITHUB_STEP_SUMMARY
