@@ -559,3 +559,796 @@ func TestRender_DateTrunc(t *testing.T) {
 		t.Errorf("SQL = %q, want %q", result.SQL, expected)
 	}
 }
+
+func TestRender_Count(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpCount,
+		Target:    types.Table{Name: "users"},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT COUNT(*) FROM "users"`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_CountWithWhere(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpCount,
+		Target:    types.Table{Name: "users"},
+		WhereClause: types.Condition{
+			Field:    types.Field{Name: "active"},
+			Operator: types.EQ,
+			Value:    types.Param{Name: "is_active"},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT COUNT(*) FROM "users" WHERE "active" = :is_active`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_CaseExpression(t *testing.T) {
+	r := New()
+	seniorLabel := types.Param{Name: "senior_label"}
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "users"},
+		FieldExpressions: []types.FieldExpression{
+			{
+				Case: &types.CaseExpression{
+					WhenClauses: []types.WhenClause{
+						{
+							Condition: types.Condition{
+								Field:    types.Field{Name: "age"},
+								Operator: types.LT,
+								Value:    types.Param{Name: "young_age"},
+							},
+							Result: types.Param{Name: "young_label"},
+						},
+						{
+							Condition: types.Condition{
+								Field:    types.Field{Name: "age"},
+								Operator: types.LT,
+								Value:    types.Param{Name: "mid_age"},
+							},
+							Result: types.Param{Name: "mid_label"},
+						},
+					},
+					ElseValue: &seniorLabel,
+				},
+				Alias: "age_group",
+			},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT CASE WHEN "age" < :young_age THEN :young_label WHEN "age" < :mid_age THEN :mid_label ELSE :senior_label END AS "age_group" FROM "users"`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_CoalesceExpression(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "users"},
+		FieldExpressions: []types.FieldExpression{
+			{
+				Coalesce: &types.CoalesceExpression{
+					Values: []types.Param{{Name: "nickname"}, {Name: "username"}},
+				},
+				Alias: "display_name",
+			},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT COALESCE(:nickname, :username) AS "display_name" FROM "users"`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_NullIfExpression(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "users"},
+		FieldExpressions: []types.FieldExpression{
+			{
+				NullIf: &types.NullIfExpression{
+					Value1: types.Param{Name: "status"},
+					Value2: types.Param{Name: "empty_status"},
+				},
+				Alias: "clean_status",
+			},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT NULLIF(:status, :empty_status) AS "clean_status" FROM "users"`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_MathExpression_Round(t *testing.T) {
+	r := New()
+	precision := types.Param{Name: "precision"}
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "products"},
+		FieldExpressions: []types.FieldExpression{
+			{
+				Math: &types.MathExpression{
+					Function:  types.MathRound,
+					Field:     types.Field{Name: "price"},
+					Precision: &precision,
+				},
+				Alias: "rounded_price",
+			},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT ROUND("price", :precision) AS "rounded_price" FROM "products"`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_MathExpression_Floor(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "products"},
+		FieldExpressions: []types.FieldExpression{
+			{
+				Math: &types.MathExpression{
+					Function: types.MathFloor,
+					Field:    types.Field{Name: "price"},
+				},
+				Alias: "floor_price",
+			},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT FLOOR("price") AS "floor_price" FROM "products"`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_MathExpression_Ceil(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "products"},
+		FieldExpressions: []types.FieldExpression{
+			{
+				Math: &types.MathExpression{
+					Function: types.MathCeil,
+					Field:    types.Field{Name: "price"},
+				},
+				Alias: "ceil_price",
+			},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT CEIL("price") AS "ceil_price" FROM "products"`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_MathExpression_Abs(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "transactions"},
+		FieldExpressions: []types.FieldExpression{
+			{
+				Math: &types.MathExpression{
+					Function: types.MathAbs,
+					Field:    types.Field{Name: "amount"},
+				},
+				Alias: "abs_amount",
+			},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT ABS("amount") AS "abs_amount" FROM "transactions"`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_WindowFunction(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "sales"},
+		Fields:    []types.Field{{Name: "product_id"}, {Name: "amount"}},
+		FieldExpressions: []types.FieldExpression{
+			{
+				Window: &types.WindowExpression{
+					Function: types.WinRowNumber,
+					Window: types.WindowSpec{
+						PartitionBy: []types.Field{{Name: "product_id"}},
+						OrderBy:     []types.OrderBy{{Field: types.Field{Name: "amount"}, Direction: types.DESC}},
+					},
+				},
+				Alias: "row_num",
+			},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT "product_id", "amount", ROW_NUMBER() OVER (PARTITION BY "product_id" ORDER BY "amount" DESC) AS "row_num" FROM "sales"`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_WindowFunction_Rank(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "scores"},
+		Fields:    []types.Field{{Name: "player_id"}, {Name: "score"}},
+		FieldExpressions: []types.FieldExpression{
+			{
+				Window: &types.WindowExpression{
+					Function: types.WinRank,
+					Window: types.WindowSpec{
+						OrderBy: []types.OrderBy{{Field: types.Field{Name: "score"}, Direction: types.DESC}},
+					},
+				},
+				Alias: "rank",
+			},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT "player_id", "score", RANK() OVER (ORDER BY "score" DESC) AS "rank" FROM "scores"`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_AggregateExpression(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "orders"},
+		FieldExpressions: []types.FieldExpression{
+			{
+				Aggregate: types.AggSum,
+				Field:     types.Field{Name: "total"},
+				Alias:     "total_sum",
+			},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT SUM("total") AS "total_sum" FROM "orders"`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_AggregateWithGroupBy(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "orders"},
+		Fields:    []types.Field{{Name: "user_id"}},
+		FieldExpressions: []types.FieldExpression{
+			{
+				Aggregate: types.AggCountField,
+				Alias:     "order_count",
+			},
+		},
+		GroupBy: []types.Field{{Name: "user_id"}},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT "user_id", COUNT(*) AS "order_count" FROM "orders" GROUP BY "user_id"`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_BetweenCondition(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "products"},
+		Fields:    []types.Field{{Name: "name"}, {Name: "price"}},
+		WhereClause: types.BetweenCondition{
+			Field: types.Field{Name: "price"},
+			Low:   types.Param{Name: "min_price"},
+			High:  types.Param{Name: "max_price"},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT "name", "price" FROM "products" WHERE "price" BETWEEN :min_price AND :max_price`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_ConditionGroup_AND(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "users"},
+		Fields:    []types.Field{{Name: "id"}, {Name: "name"}},
+		WhereClause: types.ConditionGroup{
+			Logic: types.AND,
+			Conditions: []types.ConditionItem{
+				types.Condition{
+					Field:    types.Field{Name: "active"},
+					Operator: types.EQ,
+					Value:    types.Param{Name: "is_active"},
+				},
+				types.Condition{
+					Field:    types.Field{Name: "age"},
+					Operator: types.GE,
+					Value:    types.Param{Name: "min_age"},
+				},
+			},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT "id", "name" FROM "users" WHERE ("active" = :is_active AND "age" >= :min_age)`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_ConditionGroup_OR(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "users"},
+		Fields:    []types.Field{{Name: "id"}},
+		WhereClause: types.ConditionGroup{
+			Logic: types.OR,
+			Conditions: []types.ConditionItem{
+				types.Condition{
+					Field:    types.Field{Name: "role"},
+					Operator: types.EQ,
+					Value:    types.Param{Name: "admin_role"},
+				},
+				types.Condition{
+					Field:    types.Field{Name: "role"},
+					Operator: types.EQ,
+					Value:    types.Param{Name: "super_role"},
+				},
+			},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT "id" FROM "users" WHERE ("role" = :admin_role OR "role" = :super_role)`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_Join(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "users", Alias: "u"},
+		Fields:    []types.Field{{Name: "name", Table: "u"}},
+		Joins: []types.Join{
+			{
+				Type:  types.InnerJoin,
+				Table: types.Table{Name: "orders", Alias: "o"},
+				On: types.FieldComparison{
+					LeftField:  types.Field{Name: "id", Table: "u"},
+					Operator:   types.EQ,
+					RightField: types.Field{Name: "user_id", Table: "o"},
+				},
+			},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT u."name" FROM "users" u INNER JOIN "orders" o ON u."id" = o."user_id"`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_LeftJoin(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "users"},
+		Fields:    []types.Field{{Name: "name"}},
+		Joins: []types.Join{
+			{
+				Type:  types.LeftJoin,
+				Table: types.Table{Name: "profiles"},
+				On: types.FieldComparison{
+					LeftField:  types.Field{Name: "id", Table: "users"},
+					Operator:   types.EQ,
+					RightField: types.Field{Name: "user_id", Table: "profiles"},
+				},
+			},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT "name" FROM "users" LEFT JOIN "profiles" ON users."id" = profiles."user_id"`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_HavingCondition(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "orders"},
+		Fields:    []types.Field{{Name: "user_id"}},
+		FieldExpressions: []types.FieldExpression{
+			{
+				Aggregate: types.AggCountField,
+				Alias:     "order_count",
+			},
+		},
+		GroupBy: []types.Field{{Name: "user_id"}},
+		Having: []types.ConditionItem{
+			types.AggregateCondition{
+				Func:     types.AggCountField,
+				Operator: types.GE,
+				Value:    types.Param{Name: "min_orders"},
+			},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT "user_id", COUNT(*) AS "order_count" FROM "orders" GROUP BY "user_id" HAVING COUNT(*) >= :min_orders`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_Subquery(t *testing.T) {
+	r := New()
+	subquery := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "orders"},
+		Fields:    []types.Field{{Name: "user_id"}},
+		WhereClause: types.Condition{
+			Field:    types.Field{Name: "status"},
+			Operator: types.EQ,
+			Value:    types.Param{Name: "order_status"},
+		},
+	}
+
+	idField := types.Field{Name: "id"}
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "users"},
+		Fields:    []types.Field{{Name: "name"}},
+		WhereClause: types.SubqueryCondition{
+			Field:    &idField,
+			Operator: types.IN,
+			Subquery: types.Subquery{AST: subquery},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT "name" FROM "users" WHERE "id" IN (SELECT "user_id" FROM "orders" WHERE "status" = :sq1_order_status)`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_InsertWithReturning(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpInsert,
+		Target:    types.Table{Name: "users"},
+		Values: []map[types.Field]types.Param{
+			{
+				{Name: "name"}: {Name: "name_val"},
+			},
+		},
+		Returning: []types.Field{{Name: "id"}},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `INSERT INTO "users" ("name") VALUES (:name_val) RETURNING "id"`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_OnConflictDoNothing(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpInsert,
+		Target:    types.Table{Name: "users"},
+		Values: []map[types.Field]types.Param{
+			{
+				{Name: "email"}: {Name: "email_val"},
+			},
+		},
+		OnConflict: &types.ConflictClause{
+			Columns: []types.Field{{Name: "email"}},
+			Action:  types.DoNothing,
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `INSERT INTO "users" ("email") VALUES (:email_val) ON CONFLICT ("email") DO NOTHING`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_OnConflictDoUpdate(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpInsert,
+		Target:    types.Table{Name: "users"},
+		Values: []map[types.Field]types.Param{
+			{
+				{Name: "email"}: {Name: "email_val"},
+				{Name: "name"}:  {Name: "name_val"},
+			},
+		},
+		OnConflict: &types.ConflictClause{
+			Columns: []types.Field{{Name: "email"}},
+			Action:  types.DoUpdate,
+			Updates: map[types.Field]types.Param{
+				{Name: "name"}: {Name: "new_name"},
+			},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `INSERT INTO "users" ("email", "name") VALUES (:email_val, :name_val) ON CONFLICT ("email") DO UPDATE SET "name" = :new_name`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_ForUpdate(t *testing.T) {
+	r := New()
+	lockForUpdate := types.LockForUpdate
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "users"},
+		Fields:    []types.Field{{Name: "id"}, {Name: "name"}},
+		Lock:      &lockForUpdate,
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT "id", "name" FROM "users" FOR UPDATE`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_ForShare(t *testing.T) {
+	r := New()
+	lockForShare := types.LockForShare
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "users"},
+		Fields:    []types.Field{{Name: "id"}},
+		Lock:      &lockForShare,
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT "id" FROM "users" FOR SHARE`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_Operators(t *testing.T) {
+	tests := []struct {
+		name     string
+		operator types.Operator
+		expected string
+	}{
+		{"NE", types.NE, `SELECT "id" FROM "users" WHERE "status" != :status`},
+		{"GT", types.GT, `SELECT "id" FROM "users" WHERE "status" > :status`},
+		{"GE", types.GE, `SELECT "id" FROM "users" WHERE "status" >= :status`},
+		{"LT", types.LT, `SELECT "id" FROM "users" WHERE "status" < :status`},
+		{"LE", types.LE, `SELECT "id" FROM "users" WHERE "status" <= :status`},
+		{"LIKE", types.LIKE, `SELECT "id" FROM "users" WHERE "status" LIKE :status`},
+		{"ILIKE", types.ILIKE, `SELECT "id" FROM "users" WHERE "status" ILIKE :status`},
+	}
+
+	r := New()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ast := &types.AST{
+				Operation: types.OpSelect,
+				Target:    types.Table{Name: "users"},
+				Fields:    []types.Field{{Name: "id"}},
+				WhereClause: types.Condition{
+					Field:    types.Field{Name: "status"},
+					Operator: tt.operator,
+					Value:    types.Param{Name: "status"},
+				},
+			}
+
+			result, err := r.Render(ast)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+
+			if result.SQL != tt.expected {
+				t.Errorf("SQL = %q, want %q", result.SQL, tt.expected)
+			}
+		})
+	}
+}
+
+func TestRender_IsNull(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "users"},
+		Fields:    []types.Field{{Name: "id"}},
+		WhereClause: types.Condition{
+			Field:    types.Field{Name: "deleted_at"},
+			Operator: types.IsNull,
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT "id" FROM "users" WHERE "deleted_at" IS NULL`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_IsNotNull(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpSelect,
+		Target:    types.Table{Name: "users"},
+		Fields:    []types.Field{{Name: "id"}},
+		WhereClause: types.Condition{
+			Field:    types.Field{Name: "email"},
+			Operator: types.IsNotNull,
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `SELECT "id" FROM "users" WHERE "email" IS NOT NULL`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
