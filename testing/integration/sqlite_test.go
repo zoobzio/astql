@@ -195,7 +195,7 @@ func TestSQLiteIntegration_BasicSelect(t *testing.T) {
 	renderer := sqlite.New()
 
 	// Test: Select all users
-	result, err := astql.Select(instance.T("users")).RenderWith(renderer)
+	result, err := astql.Select(instance.T("users")).Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestSQLiteIntegration_SelectWithWhere(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username")).
 		Where(instance.C(instance.F("age"), astql.GT, instance.P("min_age"))).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -271,7 +271,7 @@ func TestSQLiteIntegration_Insert(t *testing.T) {
 
 	result, err := astql.Insert(instance.T("users")).
 		Values(vm).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestSQLiteIntegration_Update(t *testing.T) {
 	result, err := astql.Update(instance.T("users")).
 		Set(instance.F("age"), instance.P("new_age")).
 		Where(instance.C(instance.F("username"), astql.EQ, instance.P("target_user"))).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -348,7 +348,7 @@ func TestSQLiteIntegration_Delete(t *testing.T) {
 
 	result, err := astql.Delete(instance.T("users")).
 		Where(instance.C(instance.F("username"), astql.EQ, instance.P("target_user"))).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -382,7 +382,7 @@ func TestSQLiteIntegration_Count(t *testing.T) {
 
 	result, err := astql.Count(instance.T("users")).
 		Where(instance.C(instance.F("active"), astql.EQ, instance.P("is_active"))).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -426,7 +426,7 @@ func TestSQLiteIntegration_Join(t *testing.T) {
 				instance.WithTable(instance.F("user_id"), "p"),
 			),
 		).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -463,7 +463,7 @@ func TestSQLiteIntegration_GroupByHaving(t *testing.T) {
 		SelectExpr(astql.As(astql.CountStar(), "post_count")).
 		GroupBy(instance.F("user_id")).
 		HavingAgg(astql.HavingCount(astql.GT, instance.P("min_posts"))).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -499,7 +499,7 @@ func TestSQLiteIntegration_OrderByLimit(t *testing.T) {
 		Fields(instance.F("username")).
 		OrderBy(instance.F("age"), astql.DESC).
 		Limit(2).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -546,7 +546,7 @@ func TestSQLiteIntegration_Union(t *testing.T) {
 		Fields(instance.F("username")).
 		Where(instance.C(instance.F("active"), astql.EQ, instance.P("is_active")))
 
-	result, err := query1.Union(query2).RenderWith(renderer)
+	result, err := query1.Union(query2).Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -594,7 +594,7 @@ func TestSQLiteIntegration_WindowFunction(t *testing.T) {
 				OrderBy(instance.F("views"), astql.DESC).
 				As("rank"),
 		).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -630,7 +630,7 @@ func TestSQLiteIntegration_Between(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username")).
 		Where(astql.Between(instance.F("age"), instance.P("min_age"), instance.P("max_age"))).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}

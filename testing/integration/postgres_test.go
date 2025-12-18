@@ -6,13 +6,11 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/zoobzio/astql"
+	pgrenderer "github.com/zoobzio/astql/pkg/postgres"
 	"github.com/zoobzio/dbml"
 )
 
@@ -21,55 +19,6 @@ type PostgresContainer struct {
 	container *postgres.PostgresContainer
 	conn      *pgx.Conn
 	connStr   string
-}
-
-// NewPostgresContainer creates and starts a PostgreSQL container for testing.
-func NewPostgresContainer(ctx context.Context, t *testing.T) *PostgresContainer {
-	t.Helper()
-
-	container, err := postgres.Run(ctx,
-		"docker.io/postgres:16-alpine",
-		postgres.WithDatabase("astql_test"),
-		postgres.WithUsername("test"),
-		postgres.WithPassword("test"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(30*time.Second),
-		),
-	)
-	if err != nil {
-		t.Fatalf("Failed to start postgres container: %v", err)
-	}
-
-	connStr, err := container.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("Failed to get connection string: %v", err)
-	}
-
-	conn, err := pgx.Connect(ctx, connStr)
-	if err != nil {
-		t.Fatalf("Failed to connect to postgres: %v", err)
-	}
-
-	return &PostgresContainer{
-		container: container,
-		conn:      conn,
-		connStr:   connStr,
-	}
-}
-
-// Close terminates the PostgreSQL container.
-func (pc *PostgresContainer) Close(ctx context.Context, t *testing.T) {
-	t.Helper()
-	if pc.conn != nil {
-		_ = pc.conn.Close(ctx)
-	}
-	if pc.container != nil {
-		if err := pc.container.Terminate(ctx); err != nil {
-			t.Logf("Warning: failed to terminate container: %v", err)
-		}
-	}
 }
 
 // Exec executes a SQL statement.
@@ -199,6 +148,12 @@ func seedData(ctx context.Context, t *testing.T, pc *PostgresContainer) {
 	`)
 }
 
+// cleanupData removes all test data to ensure test isolation.
+func cleanupData(ctx context.Context, t *testing.T, pc *PostgresContainer) {
+	t.Helper()
+	pc.Exec(ctx, t, `TRUNCATE TABLE orders, posts, users RESTART IDENTITY CASCADE`)
+}
+
 // convertParams converts astql named parameters to pgx positional parameters.
 // Returns the modified SQL and ordered arguments.
 func convertParams(sql string, params map[string]any) (convertedSQL string, args []any) {
@@ -225,16 +180,15 @@ func TestIntegration_BasicSelect(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pc := NewPostgresContainer(ctx, t)
-	defer pc.Close(ctx, t)
-
+	pc := getPostgresContainer(t)
 	setupSchema(ctx, t, pc)
 	seedData(ctx, t, pc)
+	t.Cleanup(func() { cleanupData(ctx, t, pc) })
 
 	instance := createTestInstance(t)
 
 	// Test: Select all users
-	result, err := astql.Select(instance.T("users")).Render()
+	result, err := astql.Select(instance.T("users")).Render(pgrenderer.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -258,11 +212,10 @@ func TestIntegration_SelectWithWhere(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pc := NewPostgresContainer(ctx, t)
-	defer pc.Close(ctx, t)
-
+	pc := getPostgresContainer(t)
 	setupSchema(ctx, t, pc)
 	seedData(ctx, t, pc)
+	t.Cleanup(func() { cleanupData(ctx, t, pc) })
 
 	instance := createTestInstance(t)
 
@@ -270,7 +223,7 @@ func TestIntegration_SelectWithWhere(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username")).
 		Where(instance.C(instance.F("active"), "=", instance.P("is_active"))).
-		Render()
+		Render(pgrenderer.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -300,11 +253,10 @@ func TestIntegration_Join(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pc := NewPostgresContainer(ctx, t)
-	defer pc.Close(ctx, t)
-
+	pc := getPostgresContainer(t)
 	setupSchema(ctx, t, pc)
 	seedData(ctx, t, pc)
+	t.Cleanup(func() { cleanupData(ctx, t, pc) })
 
 	instance := createTestInstance(t)
 
@@ -327,7 +279,7 @@ func TestIntegration_Join(t *testing.T) {
 			"=",
 			instance.P("is_published"),
 		)).
-		Render()
+		Render(pgrenderer.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -357,11 +309,10 @@ func TestIntegration_Aggregates(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pc := NewPostgresContainer(ctx, t)
-	defer pc.Close(ctx, t)
-
+	pc := getPostgresContainer(t)
 	setupSchema(ctx, t, pc)
 	seedData(ctx, t, pc)
+	t.Cleanup(func() { cleanupData(ctx, t, pc) })
 
 	instance := createTestInstance(t)
 
@@ -371,7 +322,7 @@ func TestIntegration_Aggregates(t *testing.T) {
 		SelectExpr(astql.As(astql.CountStar(), "post_count")).
 		GroupBy(instance.F("user_id")).
 		HavingAgg(astql.HavingCount(astql.GT, instance.P("min_count"))).
-		Render()
+		Render(pgrenderer.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -406,11 +357,10 @@ func TestIntegration_OrderByLimit(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pc := NewPostgresContainer(ctx, t)
-	defer pc.Close(ctx, t)
-
+	pc := getPostgresContainer(t)
 	setupSchema(ctx, t, pc)
 	seedData(ctx, t, pc)
+	t.Cleanup(func() { cleanupData(ctx, t, pc) })
 
 	instance := createTestInstance(t)
 
@@ -419,7 +369,7 @@ func TestIntegration_OrderByLimit(t *testing.T) {
 		Fields(instance.F("username"), instance.F("age")).
 		OrderBy(instance.F("age"), astql.DESC).
 		Limit(2).
-		Render()
+		Render(pgrenderer.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -452,10 +402,9 @@ func TestIntegration_Insert(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pc := NewPostgresContainer(ctx, t)
-	defer pc.Close(ctx, t)
-
+	pc := getPostgresContainer(t)
 	setupSchema(ctx, t, pc)
+	t.Cleanup(func() { cleanupData(ctx, t, pc) })
 
 	instance := createTestInstance(t)
 
@@ -468,7 +417,7 @@ func TestIntegration_Insert(t *testing.T) {
 	result, err := astql.Insert(instance.T("users")).
 		Values(vm).
 		Returning(instance.F("id")).
-		Render()
+		Render(pgrenderer.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -497,11 +446,10 @@ func TestIntegration_Update(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pc := NewPostgresContainer(ctx, t)
-	defer pc.Close(ctx, t)
-
+	pc := getPostgresContainer(t)
 	setupSchema(ctx, t, pc)
 	seedData(ctx, t, pc)
+	t.Cleanup(func() { cleanupData(ctx, t, pc) })
 
 	instance := createTestInstance(t)
 
@@ -510,7 +458,7 @@ func TestIntegration_Update(t *testing.T) {
 		Set(instance.F("age"), instance.P("new_age")).
 		Where(instance.C(instance.F("username"), "=", instance.P("username"))).
 		Returning(instance.F("age")).
-		Render()
+		Render(pgrenderer.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -538,18 +486,17 @@ func TestIntegration_Delete(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pc := NewPostgresContainer(ctx, t)
-	defer pc.Close(ctx, t)
-
+	pc := getPostgresContainer(t)
 	setupSchema(ctx, t, pc)
 	seedData(ctx, t, pc)
+	t.Cleanup(func() { cleanupData(ctx, t, pc) })
 
 	instance := createTestInstance(t)
 
 	// Test: Delete inactive users
 	result, err := astql.Delete(instance.T("users")).
 		Where(instance.C(instance.F("active"), "=", instance.P("is_active"))).
-		Render()
+		Render(pgrenderer.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -579,11 +526,10 @@ func TestIntegration_Between(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pc := NewPostgresContainer(ctx, t)
-	defer pc.Close(ctx, t)
-
+	pc := getPostgresContainer(t)
 	setupSchema(ctx, t, pc)
 	seedData(ctx, t, pc)
+	t.Cleanup(func() { cleanupData(ctx, t, pc) })
 
 	instance := createTestInstance(t)
 
@@ -592,7 +538,7 @@ func TestIntegration_Between(t *testing.T) {
 		Fields(instance.F("username")).
 		Where(astql.Between(instance.F("age"), instance.P("min_age"), instance.P("max_age"))).
 		OrderBy(instance.F("age"), astql.ASC).
-		Render()
+		Render(pgrenderer.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -626,11 +572,10 @@ func TestIntegration_DistinctOn(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pc := NewPostgresContainer(ctx, t)
-	defer pc.Close(ctx, t)
-
+	pc := getPostgresContainer(t)
 	setupSchema(ctx, t, pc)
 	seedData(ctx, t, pc)
+	t.Cleanup(func() { cleanupData(ctx, t, pc) })
 
 	instance := createTestInstance(t)
 
@@ -640,7 +585,7 @@ func TestIntegration_DistinctOn(t *testing.T) {
 		Fields(instance.F("user_id"), instance.F("title"), instance.F("views")).
 		OrderBy(instance.F("user_id"), astql.ASC).
 		OrderBy(instance.F("views"), astql.DESC).
-		Render()
+		Render(pgrenderer.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -666,11 +611,10 @@ func TestIntegration_ForUpdate(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pc := NewPostgresContainer(ctx, t)
-	defer pc.Close(ctx, t)
-
+	pc := getPostgresContainer(t)
 	setupSchema(ctx, t, pc)
 	seedData(ctx, t, pc)
+	t.Cleanup(func() { cleanupData(ctx, t, pc) })
 
 	instance := createTestInstance(t)
 
@@ -686,7 +630,7 @@ func TestIntegration_ForUpdate(t *testing.T) {
 		Fields(instance.F("username")).
 		Where(instance.C(instance.F("id"), "=", instance.P("user_id"))).
 		ForUpdate().
-		Render()
+		Render(pgrenderer.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -711,10 +655,9 @@ func TestIntegration_NullsOrdering(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pc := NewPostgresContainer(ctx, t)
-	defer pc.Close(ctx, t)
-
+	pc := getPostgresContainer(t)
 	setupSchema(ctx, t, pc)
+	t.Cleanup(func() { cleanupData(ctx, t, pc) })
 
 	// Insert users with NULL ages
 	pc.Exec(ctx, t, `
@@ -730,7 +673,7 @@ func TestIntegration_NullsOrdering(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username")).
 		OrderByNulls(instance.F("age"), astql.ASC, astql.NullsFirst).
-		Render()
+		Render(pgrenderer.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -760,11 +703,10 @@ func TestIntegration_CaseExpression(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pc := NewPostgresContainer(ctx, t)
-	defer pc.Close(ctx, t)
-
+	pc := getPostgresContainer(t)
 	setupSchema(ctx, t, pc)
 	seedData(ctx, t, pc)
+	t.Cleanup(func() { cleanupData(ctx, t, pc) })
 
 	instance := createTestInstance(t)
 
@@ -780,7 +722,7 @@ func TestIntegration_CaseExpression(t *testing.T) {
 		Fields(instance.F("username")).
 		SelectExpr(caseExpr).
 		OrderBy(instance.F("age"), astql.ASC).
-		Render()
+		Render(pgrenderer.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -827,11 +769,10 @@ func TestIntegration_WindowFunction(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	pc := NewPostgresContainer(ctx, t)
-	defer pc.Close(ctx, t)
-
+	pc := getPostgresContainer(t)
 	setupSchema(ctx, t, pc)
 	seedData(ctx, t, pc)
+	t.Cleanup(func() { cleanupData(ctx, t, pc) })
 
 	instance := createTestInstance(t)
 
@@ -843,7 +784,7 @@ func TestIntegration_WindowFunction(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username"), instance.F("age")).
 		SelectExpr(winExpr).
-		Render()
+		Render(pgrenderer.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}

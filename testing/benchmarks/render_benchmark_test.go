@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/zoobzio/astql"
+	"github.com/zoobzio/astql/pkg/postgres"
 	"github.com/zoobzio/dbml"
 )
 
@@ -53,7 +54,7 @@ func BenchmarkSimpleSelect(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		_, err := astql.Select(table).Render()
+		_, err := astql.Select(table).Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -74,7 +75,7 @@ func BenchmarkSelectWithFields(b *testing.B) {
 			instance.F("username"),
 			instance.F("email"),
 			instance.F("age"),
-		).Render()
+		).Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -91,7 +92,7 @@ func BenchmarkSelectWithWhere(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		_, err := astql.Select(table).Where(cond).Render()
+		_, err := astql.Select(table).Where(cond).Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -115,7 +116,7 @@ func BenchmarkSelectWithMultipleConditions(b *testing.B) {
 					instance.C(instance.F("username"), "LIKE", instance.P("pattern")),
 				),
 			)).
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -140,7 +141,7 @@ func BenchmarkSelectWithJoin(b *testing.B) {
 					instance.WithTable(instance.F("user_id"), "p"),
 				),
 			).
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -160,7 +161,7 @@ func BenchmarkSelectWithOrderByLimit(b *testing.B) {
 			OrderBy(instance.F("created_at"), astql.DESC).
 			Limit(10).
 			Offset(20).
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -181,7 +182,7 @@ func BenchmarkSelectWithAggregates(b *testing.B) {
 			SelectExpr(astql.As(astql.Sum(instance.F("total")), "total_spent")).
 			SelectExpr(astql.As(astql.CountStar(), "order_count")).
 			GroupBy(instance.F("user_id")).
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -202,7 +203,7 @@ func BenchmarkInsert(b *testing.B) {
 		vm[instance.F("email")] = instance.P("email")
 		vm[instance.F("age")] = instance.P("age")
 
-		_, err := astql.Insert(table).Values(vm).Render()
+		_, err := astql.Insert(table).Values(vm).Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -225,7 +226,7 @@ func BenchmarkInsertWithReturning(b *testing.B) {
 		_, err := astql.Insert(table).
 			Values(vm).
 			Returning(instance.F("id")).
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -245,7 +246,7 @@ func BenchmarkUpdate(b *testing.B) {
 			Set(instance.F("username"), instance.P("new_username")).
 			Set(instance.F("email"), instance.P("new_email")).
 			Where(instance.C(instance.F("id"), "=", instance.P("user_id"))).
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -263,7 +264,7 @@ func BenchmarkDelete(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, err := astql.Delete(table).
 			Where(instance.C(instance.F("id"), "=", instance.P("user_id"))).
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -281,7 +282,7 @@ func BenchmarkCount(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, err := astql.Count(table).
 			Where(instance.C(instance.F("active"), "=", instance.P("is_active"))).
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -307,7 +308,7 @@ func BenchmarkCaseExpression(b *testing.B) {
 		_, err := astql.Select(table).
 			Fields(instance.F("username")).
 			SelectExpr(caseExpr).
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -331,7 +332,7 @@ func BenchmarkWindowFunction(b *testing.B) {
 		_, err := astql.Select(table).
 			Fields(instance.F("id"), instance.F("total")).
 			SelectExpr(winExpr).
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -349,7 +350,7 @@ func BenchmarkBetween(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, err := astql.Select(table).
 			Where(astql.Between(instance.F("age"), instance.P("min"), instance.P("max"))).
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -372,7 +373,7 @@ func BenchmarkSubquery(b *testing.B) {
 
 		_, err := astql.Select(instance.T("users")).
 			Where(astql.CSub(instance.F("id"), astql.IN, subquery)).
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -413,7 +414,7 @@ func BenchmarkComplexQuery(b *testing.B) {
 			HavingAgg(astql.HavingSum(instance.WithTable(instance.F("total"), "o"), astql.GT, instance.P("min_total"))).
 			OrderBy(instance.WithTable(instance.F("username"), "u"), astql.ASC).
 			Limit(10).
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -434,7 +435,7 @@ func BenchmarkDistinctOn(b *testing.B) {
 			Fields(instance.F("user_id"), instance.F("title")).
 			OrderBy(instance.F("user_id"), astql.ASC).
 			OrderBy(instance.F("views"), astql.DESC).
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -453,7 +454,7 @@ func BenchmarkForUpdate(b *testing.B) {
 		_, err := astql.Select(table).
 			Where(instance.C(instance.F("id"), "=", instance.P("user_id"))).
 			ForUpdate().
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -471,7 +472,7 @@ func BenchmarkNullsOrdering(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, err := astql.Select(table).
 			OrderByNulls(instance.F("age"), astql.ASC, astql.NullsFirst).
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -489,7 +490,7 @@ func BenchmarkTypeCast(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, err := astql.Select(table).
 			SelectExpr(astql.As(astql.Cast(instance.F("age"), astql.CastText), "age_text")).
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -510,7 +511,7 @@ func BenchmarkCoalesce(b *testing.B) {
 				astql.Coalesce(instance.P("val1"), instance.P("val2"), instance.P("val3")),
 				"result",
 			)).
-			Render()
+			Render(postgres.New())
 		if err != nil {
 			b.Fatal(err)
 		}

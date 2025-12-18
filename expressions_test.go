@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/zoobzio/astql"
+	"github.com/zoobzio/astql/pkg/postgres"
 	"github.com/zoobzio/dbml"
 )
 
@@ -31,7 +32,7 @@ func TestAs_ValidAlias(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.As(astql.Sum(instance.F("age")), "total_age")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -49,7 +50,7 @@ func TestAs_AliasWithUnderscores(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.As(astql.Avg(instance.F("age")), "avg_user_age")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -176,7 +177,7 @@ func TestCaseBuilder_As_Valid(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(caseExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -211,7 +212,7 @@ func TestCoalesce_As_Valid(t *testing.T) {
 			astql.Coalesce(instance.P("val1"), instance.P("val2")),
 			"safe_value",
 		)).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -229,7 +230,7 @@ func TestAs_MultipleAliases(t *testing.T) {
 		SelectExpr(astql.As(astql.Sum(instance.F("age")), "total_age")).
 		SelectExpr(astql.As(astql.Avg(instance.F("age")), "avg_age")).
 		SelectExpr(astql.As(astql.Max(instance.F("age")), "max_age")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -287,7 +288,7 @@ func TestSubquery_IN_Basic(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(astql.CSub(instance.F("id"), astql.IN, subquery)).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -318,7 +319,7 @@ func TestSubquery_NOT_IN(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(astql.CSub(instance.F("id"), astql.NotIn, subquery)).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -346,7 +347,7 @@ func TestSubquery_EXISTS(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users", "u")).
 		Where(astql.CSubExists(astql.EXISTS, subquery)).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -369,7 +370,7 @@ func TestSubquery_NOT_EXISTS(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(astql.CSubExists(astql.NotExists, subquery)).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -403,7 +404,7 @@ func TestSubquery_Nested_Depth2(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(astql.CSub(instance.F("id"), astql.IN, middleSubquery)).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -448,7 +449,7 @@ func TestSubquery_Nested_MaxDepth(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(astql.CSub(instance.F("id"), astql.IN, level1)).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -489,7 +490,7 @@ func TestSubquery_DepthLimitExceeded(t *testing.T) {
 
 	_, err := astql.Select(instance.T("users")).
 		Where(astql.CSub(instance.F("id"), astql.IN, level1)).
-		Render()
+		Render(postgres.New())
 
 	// Should fail with depth exceeded error
 	if err == nil {
@@ -518,7 +519,7 @@ func TestSubquery_MultipleParameters(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(astql.CSub(instance.F("id"), astql.IN, subquery)).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -553,7 +554,7 @@ func TestSubquery_MixedParameters(t *testing.T) {
 			instance.C(instance.F("active"), "=", instance.P("is_active")),
 			astql.CSub(instance.F("id"), astql.IN, subquery),
 		)).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -654,7 +655,7 @@ func TestSubquery_ComplexConditions(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(astql.CSub(instance.F("id"), astql.IN, subquery)).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -705,7 +706,7 @@ func TestBetween_Basic(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(astql.Between(instance.F("age"), instance.P("min_age"), instance.P("max_age"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -725,7 +726,7 @@ func TestNotBetween_Basic(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(astql.NotBetween(instance.F("score"), instance.P("min"), instance.P("max"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -744,7 +745,7 @@ func TestBetween_WithOtherConditions(t *testing.T) {
 			astql.Between(instance.F("age"), instance.P("min_age"), instance.P("max_age")),
 			instance.C(instance.F("score"), ">", instance.P("min_score")),
 		)).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -766,7 +767,7 @@ func TestCast_ToText(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.As(astql.Cast(instance.F("age"), astql.CastText), "age_text")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -782,7 +783,7 @@ func TestCast_ToInteger(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.Cast(instance.F("score"), astql.CastInteger)).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -801,7 +802,7 @@ func TestCast_ToTimestamp(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.Cast(instance.F("created"), astql.CastTimestamp)).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -843,7 +844,7 @@ func TestWindowFunction_RowNumber(t *testing.T) {
 	result, err := astql.Select(instance.T("orders")).
 		Fields(instance.F("id")).
 		SelectExpr(winExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -869,7 +870,7 @@ func TestWindowFunction_Rank(t *testing.T) {
 
 	result, err := astql.Select(instance.T("orders")).
 		SelectExpr(winExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -891,7 +892,7 @@ func TestWindowFunction_DenseRank(t *testing.T) {
 
 	result, err := astql.Select(instance.T("orders")).
 		SelectExpr(winExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -910,7 +911,7 @@ func TestWindowFunction_Ntile(t *testing.T) {
 
 	result, err := astql.Select(instance.T("orders")).
 		SelectExpr(winExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -929,7 +930,7 @@ func TestWindowFunction_Lag(t *testing.T) {
 
 	result, err := astql.Select(instance.T("orders")).
 		SelectExpr(winExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -948,7 +949,7 @@ func TestWindowFunction_Lead(t *testing.T) {
 
 	result, err := astql.Select(instance.T("orders")).
 		SelectExpr(winExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -968,7 +969,7 @@ func TestWindowFunction_FirstValue(t *testing.T) {
 
 	result, err := astql.Select(instance.T("orders")).
 		SelectExpr(winExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -989,7 +990,7 @@ func TestWindowFunction_LastValue(t *testing.T) {
 
 	result, err := astql.Select(instance.T("orders")).
 		SelectExpr(winExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1011,7 +1012,7 @@ func TestWindowFunction_SumOver(t *testing.T) {
 
 	result, err := astql.Select(instance.T("orders")).
 		SelectExpr(winExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1033,7 +1034,7 @@ func TestWindowFunction_CountOver(t *testing.T) {
 
 	result, err := astql.Select(instance.T("orders")).
 		SelectExpr(winExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1057,7 +1058,7 @@ func TestSumFilter(t *testing.T) {
 
 	result, err := astql.Select(instance.T("orders")).
 		SelectExpr(astql.As(filterExpr, "user_total")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1081,7 +1082,7 @@ func TestCountFilter(t *testing.T) {
 	result, err := astql.Select(instance.T("orders")).
 		SelectExpr(astql.As(filterExpr, "high_value_count")).
 		GroupBy(instance.F("user_id")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1107,7 +1108,7 @@ func TestILIKE_Basic(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(instance.C(instance.F("username"), "ILIKE", instance.P("pattern"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1126,7 +1127,7 @@ func TestNotILIKE_Basic(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(instance.C(instance.F("username"), "NOT ILIKE", instance.P("pattern"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1149,7 +1150,7 @@ func TestRegexMatch(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(instance.C(instance.F("email"), "~", instance.P("pattern"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1168,7 +1169,7 @@ func TestRegexIMatch(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(instance.C(instance.F("email"), "~*", instance.P("pattern"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1191,7 +1192,7 @@ func TestArrayContains(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(instance.C(instance.F("tags"), "@>", instance.P("required_tags"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1210,7 +1211,7 @@ func TestArrayOverlap(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(instance.C(instance.F("tags"), "&&", instance.P("any_tags"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1229,7 +1230,7 @@ func TestArrayContainedBy(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(instance.C(instance.F("tags"), "<@", instance.P("allowed_tags"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1248,7 +1249,7 @@ func TestNotLike(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(instance.C(instance.F("username"), "NOT LIKE", instance.P("pattern"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1267,7 +1268,7 @@ func TestNotRegexMatch(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(instance.C(instance.F("email"), "!~", instance.P("pattern"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1286,7 +1287,7 @@ func TestNotRegexIMatch(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(instance.C(instance.F("email"), "!~*", instance.P("pattern"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1310,7 +1311,7 @@ func TestAvgFilter(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.AvgFilter(instance.F("age"), instance.C(instance.F("active"), "=", instance.P("is_active")))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1330,7 +1331,7 @@ func TestMinFilter(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.MinFilter(instance.F("age"), instance.C(instance.F("active"), "=", instance.P("is_active")))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1350,7 +1351,7 @@ func TestMaxFilter(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.MaxFilter(instance.F("age"), instance.C(instance.F("active"), "=", instance.P("is_active")))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1370,7 +1371,7 @@ func TestCountDistinctFilter(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.CountDistinctFilter(instance.F("id"), instance.C(instance.F("active"), "=", instance.P("is_active")))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1402,7 +1403,7 @@ func TestWindowSpecBuilder(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("id")).
 		SelectExpr(winExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1470,7 +1471,7 @@ func TestAvgOver(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("id")).
 		SelectExpr(winExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1493,7 +1494,7 @@ func TestMinOver(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("id")).
 		SelectExpr(winExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1516,7 +1517,7 @@ func TestMaxOver(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("id")).
 		SelectExpr(winExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}

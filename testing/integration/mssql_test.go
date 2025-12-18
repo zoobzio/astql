@@ -7,12 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
-	_ "github.com/microsoft/go-mssqldb"
-	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/mssql"
-	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/zoobzio/astql"
 	astqlmssql "github.com/zoobzio/astql/pkg/mssql"
 	"github.com/zoobzio/dbml"
@@ -23,61 +19,6 @@ type MSSQLContainer struct {
 	container *mssql.MSSQLServerContainer
 	db        *sql.DB
 	connStr   string
-}
-
-// NewMSSQLContainer creates and starts a SQL Server container for testing.
-func NewMSSQLContainer(ctx context.Context, t *testing.T) *MSSQLContainer {
-	t.Helper()
-
-	container, err := mssql.Run(ctx,
-		"mcr.microsoft.com/mssql/server:2022-latest",
-		mssql.WithAcceptEULA(),
-		mssql.WithPassword("Test@12345"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("SQL Server is now ready for client connections").
-				WithStartupTimeout(120*time.Second),
-		),
-	)
-	if err != nil {
-		t.Fatalf("Failed to start mssql container: %v", err)
-	}
-
-	connStr, err := container.ConnectionString(ctx)
-	if err != nil {
-		t.Fatalf("Failed to get connection string: %v", err)
-	}
-
-	db, err := sql.Open("sqlserver", connStr)
-	if err != nil {
-		t.Fatalf("Failed to connect to mssql: %v", err)
-	}
-
-	// Wait for connection to be ready
-	for i := 0; i < 60; i++ {
-		if err := db.Ping(); err == nil {
-			break
-		}
-		time.Sleep(time.Second)
-	}
-
-	return &MSSQLContainer{
-		container: container,
-		db:        db,
-		connStr:   connStr,
-	}
-}
-
-// Close terminates the SQL Server container.
-func (mc *MSSQLContainer) Close(ctx context.Context, t *testing.T) {
-	t.Helper()
-	if mc.db != nil {
-		_ = mc.db.Close()
-	}
-	if mc.container != nil {
-		if err := mc.container.Terminate(ctx); err != nil {
-			t.Logf("Warning: failed to terminate container: %v", err)
-		}
-	}
 }
 
 // Exec executes a SQL statement.
@@ -222,6 +163,17 @@ func seedMSSQLData(ctx context.Context, t *testing.T, mc *MSSQLContainer) {
 	`)
 }
 
+// cleanupMSSQLData removes all test data to ensure test isolation.
+func cleanupMSSQLData(ctx context.Context, t *testing.T, mc *MSSQLContainer) {
+	t.Helper()
+	mc.Exec(ctx, t, `DELETE FROM orders`)
+	mc.Exec(ctx, t, `DELETE FROM posts`)
+	mc.Exec(ctx, t, `DELETE FROM users`)
+	mc.Exec(ctx, t, `DBCC CHECKIDENT ('users', RESEED, 0)`)
+	mc.Exec(ctx, t, `DBCC CHECKIDENT ('posts', RESEED, 0)`)
+	mc.Exec(ctx, t, `DBCC CHECKIDENT ('orders', RESEED, 0)`)
+}
+
 // convertMSSQLParams converts astql named parameters to SQL Server positional parameters.
 // SQL Server go driver uses @p1, @p2, etc. for positional params.
 // Parameters are extracted in the order they appear in the SQL string.
@@ -267,16 +219,16 @@ func TestMSSQLIntegration_BasicSelect(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMSSQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMSSQLContainer(t)
 
 	setupMSSQLSchema(ctx, t, mc)
 	seedMSSQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMSSQLData(ctx, t, mc) })
 
 	instance := createMSSQLTestInstance(t)
 	renderer := astqlmssql.New()
 
-	result, err := astql.Select(instance.T("users")).RenderWith(renderer)
+	result, err := astql.Select(instance.T("users")).Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -300,11 +252,11 @@ func TestMSSQLIntegration_SelectWithWhere(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMSSQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMSSQLContainer(t)
 
 	setupMSSQLSchema(ctx, t, mc)
 	seedMSSQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMSSQLData(ctx, t, mc) })
 
 	instance := createMSSQLTestInstance(t)
 	renderer := astqlmssql.New()
@@ -312,7 +264,7 @@ func TestMSSQLIntegration_SelectWithWhere(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username")).
 		Where(instance.C(instance.F("active"), astql.EQ, instance.P("is_active"))).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -342,10 +294,10 @@ func TestMSSQLIntegration_Insert(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMSSQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMSSQLContainer(t)
 
 	setupMSSQLSchema(ctx, t, mc)
+	t.Cleanup(func() { cleanupMSSQLData(ctx, t, mc) })
 
 	instance := createMSSQLTestInstance(t)
 	renderer := astqlmssql.New()
@@ -357,7 +309,7 @@ func TestMSSQLIntegration_Insert(t *testing.T) {
 
 	result, err := astql.Insert(instance.T("users")).
 		Values(vm).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -388,10 +340,10 @@ func TestMSSQLIntegration_InsertWithOutput(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMSSQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMSSQLContainer(t)
 
 	setupMSSQLSchema(ctx, t, mc)
+	t.Cleanup(func() { cleanupMSSQLData(ctx, t, mc) })
 
 	instance := createMSSQLTestInstance(t)
 	renderer := astqlmssql.New()
@@ -404,7 +356,7 @@ func TestMSSQLIntegration_InsertWithOutput(t *testing.T) {
 	result, err := astql.Insert(instance.T("users")).
 		Values(vm).
 		Returning(instance.F("id")).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -433,11 +385,11 @@ func TestMSSQLIntegration_Update(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMSSQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMSSQLContainer(t)
 
 	setupMSSQLSchema(ctx, t, mc)
 	seedMSSQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMSSQLData(ctx, t, mc) })
 
 	instance := createMSSQLTestInstance(t)
 	renderer := astqlmssql.New()
@@ -445,7 +397,7 @@ func TestMSSQLIntegration_Update(t *testing.T) {
 	result, err := astql.Update(instance.T("users")).
 		Set(instance.F("age"), instance.P("new_age")).
 		Where(instance.C(instance.F("username"), astql.EQ, instance.P("username"))).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -475,18 +427,18 @@ func TestMSSQLIntegration_Delete(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMSSQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMSSQLContainer(t)
 
 	setupMSSQLSchema(ctx, t, mc)
 	seedMSSQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMSSQLData(ctx, t, mc) })
 
 	instance := createMSSQLTestInstance(t)
 	renderer := astqlmssql.New()
 
 	result, err := astql.Delete(instance.T("users")).
 		Where(instance.C(instance.F("active"), astql.EQ, instance.P("is_active"))).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -512,11 +464,11 @@ func TestMSSQLIntegration_Join(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMSSQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMSSQLContainer(t)
 
 	setupMSSQLSchema(ctx, t, mc)
 	seedMSSQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMSSQLData(ctx, t, mc) })
 
 	instance := createMSSQLTestInstance(t)
 	renderer := astqlmssql.New()
@@ -539,7 +491,7 @@ func TestMSSQLIntegration_Join(t *testing.T) {
 			astql.EQ,
 			instance.P("is_published"),
 		)).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -564,11 +516,11 @@ func TestMSSQLIntegration_Aggregates(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMSSQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMSSQLContainer(t)
 
 	setupMSSQLSchema(ctx, t, mc)
 	seedMSSQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMSSQLData(ctx, t, mc) })
 
 	instance := createMSSQLTestInstance(t)
 	renderer := astqlmssql.New()
@@ -578,7 +530,7 @@ func TestMSSQLIntegration_Aggregates(t *testing.T) {
 		SelectExpr(astql.As(astql.CountStar(), "post_count")).
 		GroupBy(instance.F("user_id")).
 		HavingAgg(astql.HavingCount(astql.GT, instance.P("min_count"))).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -604,11 +556,11 @@ func TestMSSQLIntegration_OrderByOffsetFetch(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMSSQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMSSQLContainer(t)
 
 	setupMSSQLSchema(ctx, t, mc)
 	seedMSSQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMSSQLData(ctx, t, mc) })
 
 	instance := createMSSQLTestInstance(t)
 	renderer := astqlmssql.New()
@@ -618,7 +570,7 @@ func TestMSSQLIntegration_OrderByOffsetFetch(t *testing.T) {
 		Fields(instance.F("username"), instance.F("age")).
 		OrderBy(instance.F("age"), astql.DESC).
 		Limit(2).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -651,11 +603,11 @@ func TestMSSQLIntegration_WindowFunction(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMSSQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMSSQLContainer(t)
 
 	setupMSSQLSchema(ctx, t, mc)
 	seedMSSQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMSSQLData(ctx, t, mc) })
 
 	instance := createMSSQLTestInstance(t)
 	renderer := astqlmssql.New()
@@ -667,7 +619,7 @@ func TestMSSQLIntegration_WindowFunction(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username"), instance.F("age")).
 		SelectExpr(winExpr).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -702,11 +654,11 @@ func TestMSSQLIntegration_CaseExpression(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMSSQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMSSQLContainer(t)
 
 	setupMSSQLSchema(ctx, t, mc)
 	seedMSSQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMSSQLData(ctx, t, mc) })
 
 	instance := createMSSQLTestInstance(t)
 	renderer := astqlmssql.New()
@@ -721,7 +673,7 @@ func TestMSSQLIntegration_CaseExpression(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username")).
 		SelectExpr(caseExpr).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -767,11 +719,11 @@ func TestMSSQLIntegration_Between(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMSSQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMSSQLContainer(t)
 
 	setupMSSQLSchema(ctx, t, mc)
 	seedMSSQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMSSQLData(ctx, t, mc) })
 
 	instance := createMSSQLTestInstance(t)
 	renderer := astqlmssql.New()
@@ -780,7 +732,7 @@ func TestMSSQLIntegration_Between(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username")).
 		Where(astql.Between(instance.F("age"), instance.P("min_age"), instance.P("max_age"))).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -814,18 +766,18 @@ func TestMSSQLIntegration_GetDate(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMSSQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMSSQLContainer(t)
 
 	setupMSSQLSchema(ctx, t, mc)
 	seedMSSQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMSSQLData(ctx, t, mc) })
 
 	instance := createMSSQLTestInstance(t)
 	renderer := astqlmssql.New()
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.As(astql.Now(), "current_time")).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -854,11 +806,11 @@ func TestMSSQLIntegration_Union(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMSSQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMSSQLContainer(t)
 
 	setupMSSQLSchema(ctx, t, mc)
 	seedMSSQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMSSQLData(ctx, t, mc) })
 
 	instance := createMSSQLTestInstance(t)
 	renderer := astqlmssql.New()
@@ -871,7 +823,7 @@ func TestMSSQLIntegration_Union(t *testing.T) {
 		Fields(instance.F("username")).
 		Where(instance.C(instance.F("active"), astql.EQ, instance.P("is_active")))
 
-	result, err := query1.Union(query2).RenderWith(renderer)
+	result, err := query1.Union(query2).Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -907,11 +859,11 @@ func TestMSSQLIntegration_NotEqual(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMSSQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMSSQLContainer(t)
 
 	setupMSSQLSchema(ctx, t, mc)
 	seedMSSQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMSSQLData(ctx, t, mc) })
 
 	instance := createMSSQLTestInstance(t)
 	renderer := astqlmssql.New()
@@ -919,7 +871,7 @@ func TestMSSQLIntegration_NotEqual(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username")).
 		Where(instance.C(instance.F("username"), astql.NE, instance.P("excluded"))).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}

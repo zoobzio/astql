@@ -25,7 +25,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24'
+        go-version: '1.25'
         cache: true
     
     - name: Install dependencies
@@ -35,10 +35,11 @@ jobs:
     
     - name: Run tests with coverage
       run: |
-        # Test all packages
-        echo "=== Testing all packages ==="
+        # Test all packages including integration tests
+        echo "=== Testing all packages (including integration) ==="
         go test -v -race -coverprofile=coverage-all.out -covermode=atomic \
-          -coverpkg=github.com/zoobzio/astql ./...
+          -coverpkg=github.com/zoobzio/astql,github.com/zoobzio/astql/pkg/postgres,github.com/zoobzio/astql/pkg/mysql,github.com/zoobzio/astql/pkg/mssql,github.com/zoobzio/astql/pkg/sqlite \
+          ./...
 
         # Generate coverage report
         go tool cover -func=coverage-all.out > coverage-summary.txt

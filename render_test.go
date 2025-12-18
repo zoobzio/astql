@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/zoobzio/astql"
+	"github.com/zoobzio/astql/pkg/postgres"
 	"github.com/zoobzio/dbml"
 )
 
@@ -48,7 +49,7 @@ func createRenderTestInstance(t *testing.T) *astql.ASTQL {
 func TestRender_Select_AllFields(t *testing.T) {
 	instance := createRenderTestInstance(t)
 
-	result, err := astql.Select(instance.T("users")).Render()
+	result, err := astql.Select(instance.T("users")).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -68,7 +69,7 @@ func TestRender_Select_SpecificFields(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("id"), instance.F("username"), instance.F("email")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -84,7 +85,7 @@ func TestRender_Select_WithAlias(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users", "u")).
 		Fields(instance.F("id"), instance.F("username")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -101,7 +102,7 @@ func TestRender_Select_WithWhere(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("id"), instance.F("username")).
 		Where(instance.C(instance.F("active"), "=", instance.P("is_active"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -123,7 +124,7 @@ func TestRender_Select_MultipleWhere(t *testing.T) {
 		Fields(instance.F("id")).
 		Where(instance.C(instance.F("active"), "=", instance.P("is_active"))).
 		Where(instance.C(instance.F("age"), ">", instance.P("min_age"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -151,7 +152,7 @@ func TestRender_Select_ComplexConditions(t *testing.T) {
 				instance.C(instance.F("age"), "<", instance.P("max_age")),
 			),
 		)).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -172,7 +173,7 @@ func TestRender_Select_OrderBy(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("id"), instance.F("username")).
 		OrderBy(instance.F("username"), "ASC").
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -190,7 +191,7 @@ func TestRender_Select_LimitOffset(t *testing.T) {
 		Fields(instance.F("id")).
 		Limit(10).
 		Offset(20).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -207,7 +208,7 @@ func TestRender_Select_Distinct(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username")).
 		Distinct().
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -236,7 +237,7 @@ func TestRender_Select_InnerJoin(t *testing.T) {
 				instance.WithTable(instance.F("user_id"), "p"),
 			),
 		).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -260,7 +261,7 @@ func TestRender_Select_LeftJoin(t *testing.T) {
 				instance.WithTable(instance.F("user_id"), "p"),
 			),
 		).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -296,7 +297,7 @@ func TestRender_Select_MultipleJoins(t *testing.T) {
 				instance.WithTable(instance.F("post_id"), "c"),
 			),
 		).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -317,7 +318,7 @@ func TestRender_Insert_Basic(t *testing.T) {
 
 	result, err := astql.Insert(instance.T("users")).
 		Values(vm).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -342,7 +343,7 @@ func TestRender_Insert_WithReturning(t *testing.T) {
 	result, err := astql.Insert(instance.T("users")).
 		Values(vm).
 		Returning(instance.F("id"), instance.F("created_at")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -363,7 +364,7 @@ func TestRender_Insert_OnConflictDoNothing(t *testing.T) {
 	result, err := astql.Insert(instance.T("users")).
 		Values(vm).
 		OnConflict(instance.F("email")).DoNothing().
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -387,7 +388,7 @@ func TestRender_Insert_OnConflictDoUpdate(t *testing.T) {
 		DoUpdate().
 		Set(instance.F("username"), instance.P("new_username")).
 		Build().
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -405,7 +406,7 @@ func TestRender_Update_Basic(t *testing.T) {
 	result, err := astql.Update(instance.T("users")).
 		Set(instance.F("username"), instance.P("new_username")).
 		Where(instance.C(instance.F("id"), "=", instance.P("user_id"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -428,7 +429,7 @@ func TestRender_Update_MultipleFields(t *testing.T) {
 		Set(instance.F("email"), instance.P("new_email")).
 		Set(instance.F("active"), instance.P("is_active")).
 		Where(instance.C(instance.F("id"), "=", instance.P("user_id"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -447,7 +448,7 @@ func TestRender_Update_WithReturning(t *testing.T) {
 		Set(instance.F("active"), instance.P("is_active")).
 		Where(instance.C(instance.F("id"), "=", instance.P("user_id"))).
 		Returning(instance.F("id"), instance.F("active")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -464,7 +465,7 @@ func TestRender_Delete_Basic(t *testing.T) {
 
 	result, err := astql.Delete(instance.T("users")).
 		Where(instance.C(instance.F("id"), "=", instance.P("user_id"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -485,7 +486,7 @@ func TestRender_Delete_WithReturning(t *testing.T) {
 	result, err := astql.Delete(instance.T("users")).
 		Where(instance.C(instance.F("active"), "=", instance.P("is_active"))).
 		Returning(instance.F("id"), instance.F("username")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -500,7 +501,7 @@ func TestRender_Delete_WithReturning(t *testing.T) {
 func TestRender_Count_Basic(t *testing.T) {
 	instance := createRenderTestInstance(t)
 
-	result, err := astql.Count(instance.T("users")).Render()
+	result, err := astql.Count(instance.T("users")).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -516,7 +517,7 @@ func TestRender_Count_WithWhere(t *testing.T) {
 
 	result, err := astql.Count(instance.T("users")).
 		Where(instance.C(instance.F("active"), "=", instance.P("is_active"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -539,7 +540,7 @@ func TestRender_Count_WithInnerJoin(t *testing.T) {
 				instance.WithTable(instance.F("user_id"), "p"),
 			),
 		).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -555,7 +556,7 @@ func TestRender_Count_WithCrossJoin(t *testing.T) {
 
 	result, err := astql.Count(instance.T("users")).
 		CrossJoin(instance.T("posts")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -579,7 +580,7 @@ func TestRender_Count_WithJoinAndWhere(t *testing.T) {
 			),
 		).
 		Where(instance.C(instance.WithTable(instance.F("active"), "u"), "=", instance.P("is_active"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -600,7 +601,7 @@ func TestRender_Select_Aggregates(t *testing.T) {
 		SelectExpr(astql.Min(instance.F("age"))).
 		SelectExpr(astql.Max(instance.F("age"))).
 		SelectExpr(astql.CountField(instance.F("id"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -616,7 +617,7 @@ func TestRender_Select_AggregateWithAlias(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.As(astql.Sum(instance.F("age")), "total_age")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -635,7 +636,7 @@ func TestRender_Select_GroupBy(t *testing.T) {
 		Fields(instance.F("active")).
 		SelectExpr(astql.CountField(instance.F("id"))).
 		GroupBy(instance.F("active")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -654,7 +655,7 @@ func TestRender_Select_GroupByHaving(t *testing.T) {
 		SelectExpr(astql.CountField(instance.F("id"))).
 		GroupBy(instance.F("active")).
 		Having(instance.C(instance.F("active"), "=", instance.P("is_active"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -673,7 +674,7 @@ func TestRender_Select_HavingAgg_Count(t *testing.T) {
 		SelectExpr(astql.CountField(instance.F("id"))).
 		GroupBy(instance.F("active")).
 		HavingAgg(astql.HavingCount(astql.GT, instance.P("min_count"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -692,7 +693,7 @@ func TestRender_Select_HavingAgg_Sum(t *testing.T) {
 		SelectExpr(astql.Sum(instance.F("age"))).
 		GroupBy(instance.F("active")).
 		HavingAgg(astql.HavingSum(instance.F("age"), astql.GE, instance.P("min_total"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -711,7 +712,7 @@ func TestRender_Select_HavingAgg_Avg(t *testing.T) {
 		SelectExpr(astql.Avg(instance.F("age"))).
 		GroupBy(instance.F("active")).
 		HavingAgg(astql.HavingAvg(instance.F("age"), astql.LT, instance.P("max_avg"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -730,7 +731,7 @@ func TestRender_Select_HavingAgg_CountField(t *testing.T) {
 		SelectExpr(astql.CountField(instance.F("id"))).
 		GroupBy(instance.F("active")).
 		HavingAgg(astql.HavingCountField(instance.F("id"), astql.GT, instance.P("min_count"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -749,7 +750,7 @@ func TestRender_Select_HavingAgg_CountDistinct(t *testing.T) {
 		SelectExpr(astql.CountDistinct(instance.F("email"))).
 		GroupBy(instance.F("active")).
 		HavingAgg(astql.HavingCountDistinct(instance.F("email"), astql.GE, instance.P("min_unique"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -772,7 +773,7 @@ func TestRender_Select_HavingAgg_MinMax(t *testing.T) {
 			astql.HavingMin(instance.F("age"), astql.GE, instance.P("min_age")),
 			astql.HavingMax(instance.F("age"), astql.LE, instance.P("max_age")),
 		).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -793,7 +794,7 @@ func TestRender_Select_HavingAgg_MixedConditions(t *testing.T) {
 		GroupBy(instance.F("active")).
 		Having(instance.C(instance.F("active"), "=", instance.P("is_active"))).
 		HavingAgg(astql.HavingCount(astql.GT, instance.P("min_count"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -885,7 +886,7 @@ func TestRender_SpecialCharacters_TableName(t *testing.T) {
 
 	result, err := astql.Select(instance.T("select")).
 		Fields(instance.F("id")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -911,7 +912,7 @@ func TestRender_SpecialCharacters_FieldName(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("order")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -934,7 +935,7 @@ func TestRender_DuplicateParameters(t *testing.T) {
 			instance.C(instance.F("age"), ">", instance.P("age_value")),
 			instance.C(instance.F("age"), "<", instance.P("age_value")),
 		)).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -958,7 +959,7 @@ func TestRender_NullConditions(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("id")).
 		Where(instance.Null(instance.F("email"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -980,7 +981,7 @@ func TestRender_NotNullConditions(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("id")).
 		Where(instance.NotNull(instance.F("email"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1020,7 +1021,7 @@ func TestRender_ComplexQuery(t *testing.T) {
 		).
 		OrderBy(instance.WithTable(instance.F("username"), "u"), "ASC").
 		Limit(10).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1045,7 +1046,7 @@ func TestRender_Select_RightJoin(t *testing.T) {
 			instance.T("posts"),
 			astql.CF(instance.F("id"), "=", instance.F("user_id")),
 		).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1063,7 +1064,7 @@ func TestRender_Select_CrossJoin(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username")).
 		CrossJoin(instance.T("posts")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1080,7 +1081,7 @@ func TestRender_Select_CountDistinct(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.CountDistinct(instance.F("email"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1105,7 +1106,7 @@ func TestRender_Select_CaseExpression(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username")).
 		SelectExpr(caseExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1131,7 +1132,7 @@ func TestRender_Select_CaseExpression_NoElse(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(caseExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1153,7 +1154,7 @@ func TestRender_Select_Coalesce(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(coalesceExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1179,7 +1180,7 @@ func TestRender_Select_NullIf(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(nullifExpr).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1200,7 +1201,7 @@ func TestRender_Select_Round(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.As(astql.Round(instance.F("age"), instance.P("precision")), "rounded_age")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1221,7 +1222,7 @@ func TestRender_Select_Round_NoPrecision(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.Round(instance.F("age"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1238,7 +1239,7 @@ func TestRender_Select_Floor(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.As(astql.Floor(instance.F("age")), "floor_age")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1255,7 +1256,7 @@ func TestRender_Select_Ceil(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.As(astql.Ceil(instance.F("age")), "ceil_age")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1272,7 +1273,7 @@ func TestRender_Select_Abs(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.As(astql.Abs(instance.F("age")), "abs_age")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1289,7 +1290,7 @@ func TestRender_Select_Power(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.As(astql.Power(instance.F("age"), instance.P("exponent")), "power_age")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1310,7 +1311,7 @@ func TestRender_Select_Sqrt(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.As(astql.Sqrt(instance.F("age")), "sqrt_age")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1330,7 +1331,7 @@ func TestRender_Select_MultipleMathExpressions(t *testing.T) {
 		SelectExpr(astql.As(astql.Round(instance.F("age")), "rounded")).
 		SelectExpr(astql.As(astql.Floor(instance.F("age")), "floored")).
 		SelectExpr(astql.As(astql.Ceil(instance.F("age")), "ceiled")).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1369,7 +1370,7 @@ func TestRender_Select_VectorL2Distance(t *testing.T) {
 		Where(instance.C(instance.F("embedding"), astql.VectorL2Distance, instance.P("query_embedding"))).
 		OrderBy(instance.F("embedding"), astql.ASC).
 		Limit(10).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1391,7 +1392,7 @@ func TestRender_Select_VectorInnerProduct(t *testing.T) {
 	result, err := astql.Select(instance.T("documents")).
 		Fields(instance.F("id")).
 		Where(instance.C(instance.F("embedding"), astql.VectorInnerProduct, instance.P("query"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1409,7 +1410,7 @@ func TestRender_Select_VectorCosineDistance(t *testing.T) {
 	result, err := astql.Select(instance.T("documents")).
 		Fields(instance.F("id")).
 		Where(instance.C(instance.F("embedding"), astql.VectorCosineDistance, instance.P("query"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1427,7 +1428,7 @@ func TestRender_Select_VectorL1Distance(t *testing.T) {
 	result, err := astql.Select(instance.T("documents")).
 		Fields(instance.F("id")).
 		Where(instance.C(instance.F("embedding"), astql.VectorL1Distance, instance.P("query"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1446,7 +1447,7 @@ func TestRender_Select_OrderByExpr_VectorDistance(t *testing.T) {
 		Fields(instance.F("id"), instance.F("content")).
 		OrderByExpr(instance.F("embedding"), astql.VectorL2Distance, instance.P("query_embedding"), astql.ASC).
 		Limit(10).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1470,7 +1471,7 @@ func TestRender_Select_OrderByExpr_WithWhere(t *testing.T) {
 		Where(instance.NotNull(instance.F("embedding"))).
 		OrderByExpr(instance.F("embedding"), astql.VectorL2Distance, instance.P("query_embedding"), astql.ASC).
 		Limit(10).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1488,7 +1489,7 @@ func TestRender_Select_OrderByExpr_CosineDistance(t *testing.T) {
 	result, err := astql.Select(instance.T("documents")).
 		Fields(instance.F("id")).
 		OrderByExpr(instance.F("embedding"), astql.VectorCosineDistance, instance.P("query"), astql.ASC).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1506,7 +1507,7 @@ func TestRender_Select_InWithParam(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("id"), instance.F("username")).
 		Where(instance.C(instance.F("age"), astql.IN, instance.P("ages"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1529,7 +1530,7 @@ func TestRender_Select_NotInWithParam(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("id"), instance.F("username")).
 		Where(instance.C(instance.F("age"), astql.NotIn, instance.P("excluded_ages"))).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1555,7 +1556,7 @@ func TestRender_Select_InWithOtherConditions(t *testing.T) {
 			instance.C(instance.F("active"), "=", instance.P("is_active")),
 			instance.C(instance.F("age"), astql.IN, instance.P("ages")),
 		)).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}

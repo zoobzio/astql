@@ -5,6 +5,7 @@ import (
 
 	"github.com/zoobzio/astql"
 	"github.com/zoobzio/astql/internal/types"
+	"github.com/zoobzio/astql/pkg/postgres"
 	"github.com/zoobzio/dbml"
 )
 
@@ -402,7 +403,7 @@ func TestFactories_ProgrammaticFields(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Fields(fields...).
-		Render()
+		Render(postgres.New())
 
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
@@ -438,7 +439,7 @@ func TestFactories_ProgrammaticValues(t *testing.T) {
 
 	result, err := astql.Insert(instance.T("users")).
 		Values(vm).
-		Render()
+		Render(postgres.New())
 
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
@@ -476,7 +477,7 @@ func TestFactories_MultiRowInsert(t *testing.T) {
 		query = query.Values(vm)
 	}
 
-	result, err := query.Render()
+	result, err := query.Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -508,7 +509,7 @@ func TestFactories_ProgrammaticConditionItems(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(instance.And(conditions...)).
-		Render()
+		Render(postgres.New())
 
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
@@ -546,7 +547,7 @@ func TestFactories_ConditionItemsWithOr(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		Where(instance.Or(conditions...)).
-		Render()
+		Render(postgres.New())
 
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)

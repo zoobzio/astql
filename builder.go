@@ -274,26 +274,8 @@ func (b *Builder) MustBuild() *types.AST {
 	return ast
 }
 
-// Render builds the AST and renders it to SQL.
-func (b *Builder) Render() (*QueryResult, error) {
-	ast, err := b.Build()
-	if err != nil {
-		return nil, err
-	}
-	return Render(ast)
-}
-
-// MustRender builds and renders the AST or panics on error.
-func (b *Builder) MustRender() *QueryResult {
-	result, err := b.Render()
-	if err != nil {
-		panic(err)
-	}
-	return result
-}
-
-// RenderWith builds the AST and renders it using the provided renderer.
-func (b *Builder) RenderWith(renderer Renderer) (*QueryResult, error) {
+// Render builds the AST and renders it using the provided renderer.
+func (b *Builder) Render(renderer Renderer) (*QueryResult, error) {
 	ast, err := b.Build()
 	if err != nil {
 		return nil, err
@@ -301,9 +283,9 @@ func (b *Builder) RenderWith(renderer Renderer) (*QueryResult, error) {
 	return renderer.Render(ast)
 }
 
-// MustRenderWith builds and renders the AST with the provided renderer, or panics on error.
-func (b *Builder) MustRenderWith(renderer Renderer) *QueryResult {
-	result, err := b.RenderWith(renderer)
+// MustRender builds and renders the AST with the provided renderer, or panics on error.
+func (b *Builder) MustRender(renderer Renderer) *QueryResult {
+	result, err := b.Render(renderer)
 	if err != nil {
 		panic(err)
 	}
@@ -834,26 +816,8 @@ func (cb *CompoundBuilder) MustBuild() *types.CompoundQuery {
 	return query
 }
 
-// Render builds and renders the compound query to SQL.
-func (cb *CompoundBuilder) Render() (*QueryResult, error) {
-	query, err := cb.Build()
-	if err != nil {
-		return nil, err
-	}
-	return RenderCompound(query)
-}
-
-// MustRender builds and renders the compound query or panics on error.
-func (cb *CompoundBuilder) MustRender() *QueryResult {
-	result, err := cb.Render()
-	if err != nil {
-		panic(err)
-	}
-	return result
-}
-
-// RenderWith builds and renders the compound query using the provided renderer.
-func (cb *CompoundBuilder) RenderWith(renderer Renderer) (*QueryResult, error) {
+// Render builds and renders the compound query using the provided renderer.
+func (cb *CompoundBuilder) Render(renderer Renderer) (*QueryResult, error) {
 	query, err := cb.Build()
 	if err != nil {
 		return nil, err
@@ -861,9 +825,9 @@ func (cb *CompoundBuilder) RenderWith(renderer Renderer) (*QueryResult, error) {
 	return renderer.RenderCompound(query)
 }
 
-// MustRenderWith builds and renders the compound query with the provided renderer, or panics on error.
-func (cb *CompoundBuilder) MustRenderWith(renderer Renderer) *QueryResult {
-	result, err := cb.RenderWith(renderer)
+// MustRender builds and renders the compound query with the provided renderer, or panics on error.
+func (cb *CompoundBuilder) MustRender(renderer Renderer) *QueryResult {
+	result, err := cb.Render(renderer)
 	if err != nil {
 		panic(err)
 	}

@@ -6,12 +6,8 @@ import (
 	"database/sql"
 	"strings"
 	"testing"
-	"time"
 
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/mysql"
-	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/zoobzio/astql"
 	astqlmysql "github.com/zoobzio/astql/pkg/mysql"
 	"github.com/zoobzio/dbml"
@@ -22,62 +18,6 @@ type MySQLContainer struct {
 	container *mysql.MySQLContainer
 	db        *sql.DB
 	connStr   string
-}
-
-// NewMySQLContainer creates and starts a MySQL container for testing.
-func NewMySQLContainer(ctx context.Context, t *testing.T) *MySQLContainer {
-	t.Helper()
-
-	container, err := mysql.Run(ctx,
-		"docker.io/mysql:8.0",
-		mysql.WithDatabase("astql_test"),
-		mysql.WithUsername("test"),
-		mysql.WithPassword("test"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("port: 3306  MySQL Community Server").
-				WithStartupTimeout(60*time.Second),
-		),
-	)
-	if err != nil {
-		t.Fatalf("Failed to start mysql container: %v", err)
-	}
-
-	connStr, err := container.ConnectionString(ctx)
-	if err != nil {
-		t.Fatalf("Failed to get connection string: %v", err)
-	}
-
-	db, err := sql.Open("mysql", connStr)
-	if err != nil {
-		t.Fatalf("Failed to connect to mysql: %v", err)
-	}
-
-	// Wait for connection to be ready
-	for i := 0; i < 30; i++ {
-		if err := db.Ping(); err == nil {
-			break
-		}
-		time.Sleep(time.Second)
-	}
-
-	return &MySQLContainer{
-		container: container,
-		db:        db,
-		connStr:   connStr,
-	}
-}
-
-// Close terminates the MySQL container.
-func (mc *MySQLContainer) Close(ctx context.Context, t *testing.T) {
-	t.Helper()
-	if mc.db != nil {
-		_ = mc.db.Close()
-	}
-	if mc.container != nil {
-		if err := mc.container.Terminate(ctx); err != nil {
-			t.Logf("Warning: failed to terminate container: %v", err)
-		}
-	}
 }
 
 // Exec executes a SQL statement.
@@ -206,6 +146,16 @@ func seedMySQLData(ctx context.Context, t *testing.T, mc *MySQLContainer) {
 	`)
 }
 
+// cleanupMySQLData removes all test data to ensure test isolation.
+func cleanupMySQLData(ctx context.Context, t *testing.T, mc *MySQLContainer) {
+	t.Helper()
+	mc.Exec(ctx, t, `SET FOREIGN_KEY_CHECKS = 0`)
+	mc.Exec(ctx, t, `TRUNCATE TABLE orders`)
+	mc.Exec(ctx, t, `TRUNCATE TABLE posts`)
+	mc.Exec(ctx, t, `TRUNCATE TABLE users`)
+	mc.Exec(ctx, t, `SET FOREIGN_KEY_CHECKS = 1`)
+}
+
 // convertMySQLParams converts astql named parameters to MySQL positional parameters.
 // Parameters are extracted in the order they appear in the SQL string.
 func convertMySQLParams(sqlStr string, params map[string]any) (string, []any) {
@@ -248,16 +198,16 @@ func TestMySQLIntegration_BasicSelect(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMySQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMySQLContainer(t)
 
 	setupMySQLSchema(ctx, t, mc)
 	seedMySQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
 
 	instance := createMySQLTestInstance(t)
 	renderer := astqlmysql.New()
 
-	result, err := astql.Select(instance.T("users")).RenderWith(renderer)
+	result, err := astql.Select(instance.T("users")).Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -281,11 +231,11 @@ func TestMySQLIntegration_SelectWithWhere(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMySQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMySQLContainer(t)
 
 	setupMySQLSchema(ctx, t, mc)
 	seedMySQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
 
 	instance := createMySQLTestInstance(t)
 	renderer := astqlmysql.New()
@@ -293,7 +243,7 @@ func TestMySQLIntegration_SelectWithWhere(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username")).
 		Where(instance.C(instance.F("active"), astql.EQ, instance.P("is_active"))).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -323,10 +273,10 @@ func TestMySQLIntegration_Insert(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMySQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMySQLContainer(t)
 
 	setupMySQLSchema(ctx, t, mc)
+	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
 
 	instance := createMySQLTestInstance(t)
 	renderer := astqlmysql.New()
@@ -338,7 +288,7 @@ func TestMySQLIntegration_Insert(t *testing.T) {
 
 	result, err := astql.Insert(instance.T("users")).
 		Values(vm).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -369,11 +319,11 @@ func TestMySQLIntegration_OnDuplicateKeyUpdate(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMySQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMySQLContainer(t)
 
 	setupMySQLSchema(ctx, t, mc)
 	seedMySQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
 
 	instance := createMySQLTestInstance(t)
 	renderer := astqlmysql.New()
@@ -389,7 +339,7 @@ func TestMySQLIntegration_OnDuplicateKeyUpdate(t *testing.T) {
 		DoUpdate().
 		Set(instance.F("age"), instance.P("new_age")).
 		Build().
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -422,11 +372,11 @@ func TestMySQLIntegration_Update(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMySQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMySQLContainer(t)
 
 	setupMySQLSchema(ctx, t, mc)
 	seedMySQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
 
 	instance := createMySQLTestInstance(t)
 	renderer := astqlmysql.New()
@@ -434,7 +384,7 @@ func TestMySQLIntegration_Update(t *testing.T) {
 	result, err := astql.Update(instance.T("users")).
 		Set(instance.F("age"), instance.P("new_age")).
 		Where(instance.C(instance.F("username"), astql.EQ, instance.P("username"))).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -464,18 +414,18 @@ func TestMySQLIntegration_Delete(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMySQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMySQLContainer(t)
 
 	setupMySQLSchema(ctx, t, mc)
 	seedMySQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
 
 	instance := createMySQLTestInstance(t)
 	renderer := astqlmysql.New()
 
 	result, err := astql.Delete(instance.T("users")).
 		Where(instance.C(instance.F("active"), astql.EQ, instance.P("is_active"))).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -501,11 +451,11 @@ func TestMySQLIntegration_Join(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMySQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMySQLContainer(t)
 
 	setupMySQLSchema(ctx, t, mc)
 	seedMySQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
 
 	instance := createMySQLTestInstance(t)
 	renderer := astqlmysql.New()
@@ -528,7 +478,7 @@ func TestMySQLIntegration_Join(t *testing.T) {
 			astql.EQ,
 			instance.P("is_published"),
 		)).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -553,11 +503,11 @@ func TestMySQLIntegration_Aggregates(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMySQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMySQLContainer(t)
 
 	setupMySQLSchema(ctx, t, mc)
 	seedMySQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
 
 	instance := createMySQLTestInstance(t)
 	renderer := astqlmysql.New()
@@ -567,7 +517,7 @@ func TestMySQLIntegration_Aggregates(t *testing.T) {
 		SelectExpr(astql.As(astql.CountStar(), "post_count")).
 		GroupBy(instance.F("user_id")).
 		HavingAgg(astql.HavingCount(astql.GT, instance.P("min_count"))).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -593,11 +543,11 @@ func TestMySQLIntegration_OrderByLimit(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMySQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMySQLContainer(t)
 
 	setupMySQLSchema(ctx, t, mc)
 	seedMySQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
 
 	instance := createMySQLTestInstance(t)
 	renderer := astqlmysql.New()
@@ -606,7 +556,7 @@ func TestMySQLIntegration_OrderByLimit(t *testing.T) {
 		Fields(instance.F("username"), instance.F("age")).
 		OrderBy(instance.F("age"), astql.DESC).
 		Limit(2).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -639,11 +589,11 @@ func TestMySQLIntegration_ForUpdate(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMySQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMySQLContainer(t)
 
 	setupMySQLSchema(ctx, t, mc)
 	seedMySQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
 
 	instance := createMySQLTestInstance(t)
 	renderer := astqlmysql.New()
@@ -659,7 +609,7 @@ func TestMySQLIntegration_ForUpdate(t *testing.T) {
 		Fields(instance.F("username")).
 		Where(instance.C(instance.F("id"), astql.EQ, instance.P("user_id"))).
 		ForUpdate().
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -684,11 +634,11 @@ func TestMySQLIntegration_WindowFunction(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMySQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMySQLContainer(t)
 
 	setupMySQLSchema(ctx, t, mc)
 	seedMySQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
 
 	instance := createMySQLTestInstance(t)
 	renderer := astqlmysql.New()
@@ -700,7 +650,7 @@ func TestMySQLIntegration_WindowFunction(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username"), instance.F("age")).
 		SelectExpr(winExpr).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -735,11 +685,11 @@ func TestMySQLIntegration_CaseExpression(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMySQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMySQLContainer(t)
 
 	setupMySQLSchema(ctx, t, mc)
 	seedMySQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
 
 	instance := createMySQLTestInstance(t)
 	renderer := astqlmysql.New()
@@ -754,7 +704,7 @@ func TestMySQLIntegration_CaseExpression(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username")).
 		SelectExpr(caseExpr).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -800,11 +750,11 @@ func TestMySQLIntegration_Between(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMySQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMySQLContainer(t)
 
 	setupMySQLSchema(ctx, t, mc)
 	seedMySQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
 
 	instance := createMySQLTestInstance(t)
 	renderer := astqlmysql.New()
@@ -813,7 +763,7 @@ func TestMySQLIntegration_Between(t *testing.T) {
 		Fields(instance.F("username")).
 		Where(astql.Between(instance.F("age"), instance.P("min_age"), instance.P("max_age"))).
 		OrderBy(instance.F("age"), astql.ASC).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -847,10 +797,10 @@ func TestMySQLIntegration_DateNow(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMySQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMySQLContainer(t)
 
 	setupMySQLSchema(ctx, t, mc)
+	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
 
 	instance := createMySQLTestInstance(t)
 	renderer := astqlmysql.New()
@@ -858,7 +808,7 @@ func TestMySQLIntegration_DateNow(t *testing.T) {
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.As(astql.Now(), "current_time")).
 		Limit(1).
-		RenderWith(renderer)
+		Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -881,11 +831,11 @@ func TestMySQLIntegration_Union(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	mc := NewMySQLContainer(ctx, t)
-	defer mc.Close(ctx, t)
+	mc := getMySQLContainer(t)
 
 	setupMySQLSchema(ctx, t, mc)
 	seedMySQLData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
 
 	instance := createMySQLTestInstance(t)
 	renderer := astqlmysql.New()
@@ -898,7 +848,7 @@ func TestMySQLIntegration_Union(t *testing.T) {
 		Fields(instance.F("username")).
 		Where(instance.C(instance.F("active"), astql.EQ, instance.P("is_active")))
 
-	result, err := query1.Union(query2).RenderWith(renderer)
+	result, err := query1.Union(query2).Render(renderer)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}

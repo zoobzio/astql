@@ -8,27 +8,27 @@ on:
 
 jobs:
   test:
-    name: Test
+    name: Test (Go ${{ matrix.go-version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.24']
-    
+        go-version: ['1.24', '1.25']
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Setup Go
       uses: actions/setup-go@v5
       with:
         go-version: ${{ matrix.go-version }}
-    
+
     - name: Run tests with race detector
       run: make test-race
-    
+
     - name: Generate coverage
       run: make coverage
-    
+
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
       with:
@@ -36,7 +36,7 @@ jobs:
         flags: unittests
         name: astql-coverage-${{ matrix.go-version }}
         fail_ci_if_error: false
-      if: matrix.go-version == '1.24'
+      if: matrix.go-version == '1.25'
 
   lint:
     name: Lint
@@ -44,11 +44,11 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Setup Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24'
+        go-version: '1.25'
 
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v8
@@ -64,23 +64,38 @@ jobs:
         echo "Linters with findings:" >> $GITHUB_STEP_SUMMARY
         jq -r '.Issues[] | .FromLinter' lint-report.json 2>/dev/null | sort | uniq -c | sort -nr >> $GITHUB_STEP_SUMMARY || echo "No issues found ✅" >> $GITHUB_STEP_SUMMARY
 
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25'
+
+    - name: Run integration tests
+      run: make test-integration
+
   benchmark:
     name: Benchmark
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Setup Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24'
+        go-version: '1.25'
 
     - name: Run benchmarks
       run: |
         echo "### ASTQL Benchmarks" | tee benchmark_results.txt
         make bench | tee -a benchmark_results.txt
-    
+
     - name: Upload benchmark results
       uses: actions/upload-artifact@v4
       with:

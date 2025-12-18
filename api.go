@@ -8,26 +8,26 @@
 //
 // Queries can be built directly using the package-level builder functions:
 //
+//	import "github.com/zoobzio/astql/pkg/postgres"
+//
 //	query := astql.Select(table).
 //		Fields(field1, field2).
 //		Where(condition).
 //		OrderBy(field1, astql.ASC).
 //		Limit(10)
 //
-//	result, err := query.Render()
+//	result, err := query.Render(postgres.New())
 //	// result.SQL: SELECT "field1", "field2" FROM "table" WHERE ... ORDER BY "field1" ASC LIMIT 10
 //	// result.RequiredParams: []string{"param_name", ...}
 //
 // # Multi-Provider Support
 //
 // The package supports multiple SQL dialects through the Renderer interface.
-// The default Render() method uses PostgreSQL, but you can use RenderWith()
-// for explicit provider selection:
+// Available providers: postgres, mysql, sqlite, mssql.
 //
-//	import "github.com/zoobzio/astql/pkg/postgres"
+//	import "github.com/zoobzio/astql/pkg/mysql"
 //
-//	pg := postgres.New()
-//	result, err := query.RenderWith(pg)
+//	result, err := query.Render(mysql.New())
 //
 // # Schema-Validated Usage
 //

@@ -6,6 +6,7 @@ import (
 
 	"github.com/zoobzio/astql"
 	"github.com/zoobzio/astql/internal/types"
+	"github.com/zoobzio/astql/pkg/postgres"
 	"github.com/zoobzio/dbml"
 )
 
@@ -519,7 +520,7 @@ func TestMustRender_Success(t *testing.T) {
 
 	result := astql.Select(instance.T("users")).
 		Fields(instance.F("id")).
-		MustRender()
+		MustRender(postgres.New())
 
 	if result.SQL != `SELECT "id" FROM "users"` {
 		t.Errorf("Expected SQL, got: %s", result.SQL)
@@ -539,7 +540,7 @@ func TestMustRender_Panics(t *testing.T) {
 	// Create invalid builder (Fields on INSERT)
 	astql.Insert(instance.T("users")).
 		Fields(instance.F("id")).
-		MustRender()
+		MustRender(postgres.New())
 }
 
 // Test Join method (wrapper for InnerJoin).
@@ -552,7 +553,7 @@ func TestJoin(t *testing.T) {
 			instance.T("posts"),
 			astql.CF(instance.F("id"), "=", instance.F("user_id")),
 		).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -574,7 +575,7 @@ func TestDistinctOn_Single(t *testing.T) {
 		DistinctOn(instance.F("user_id")).
 		Fields(instance.F("user_id"), instance.F("title")).
 		OrderBy(instance.F("user_id"), types.ASC).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -593,7 +594,7 @@ func TestDistinctOn_Multiple(t *testing.T) {
 		Fields(instance.F("user_id"), instance.F("title")).
 		OrderBy(instance.F("user_id"), types.ASC).
 		OrderBy(instance.F("title"), types.ASC).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -615,7 +616,7 @@ func TestForUpdate(t *testing.T) {
 		Fields(instance.F("id")).
 		Where(instance.C(instance.F("id"), "=", instance.P("user_id"))).
 		ForUpdate().
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -631,7 +632,7 @@ func TestForNoKeyUpdate(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		ForNoKeyUpdate().
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -647,7 +648,7 @@ func TestForShare(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		ForShare().
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -663,7 +664,7 @@ func TestForKeyShare(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		ForKeyShare().
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -683,7 +684,7 @@ func TestOrderByNulls_First(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		OrderByNulls(instance.F("age"), types.ASC, astql.NullsFirst).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -699,7 +700,7 @@ func TestOrderByNulls_Last(t *testing.T) {
 
 	result, err := astql.Select(instance.T("users")).
 		OrderByNulls(instance.F("age"), types.DESC, astql.NullsLast).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -723,7 +724,7 @@ func TestFullOuterJoin(t *testing.T) {
 			instance.T("posts"),
 			astql.CF(instance.F("id"), "=", instance.F("user_id")),
 		).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -749,7 +750,7 @@ func TestCompoundQuery_Union(t *testing.T) {
 		Fields(instance.F("id"), instance.F("username")).
 		Where(instance.C(instance.F("email"), "LIKE", instance.P("pattern")))
 
-	result, err := astql.Union(query1, query2).Render()
+	result, err := astql.Union(query1, query2).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -780,7 +781,7 @@ func TestCompoundQuery_UnionAll(t *testing.T) {
 	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 
-	result, err := astql.UnionAll(query1, query2).Render()
+	result, err := astql.UnionAll(query1, query2).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -796,7 +797,7 @@ func TestCompoundQuery_Intersect(t *testing.T) {
 	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 
-	result, err := astql.Intersect(query1, query2).Render()
+	result, err := astql.Intersect(query1, query2).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -812,7 +813,7 @@ func TestCompoundQuery_Except(t *testing.T) {
 	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 
-	result, err := astql.Except(query1, query2).Render()
+	result, err := astql.Except(query1, query2).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -828,7 +829,7 @@ func TestCompoundQuery_IntersectAll(t *testing.T) {
 	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 
-	result, err := astql.IntersectAll(query1, query2).Render()
+	result, err := astql.IntersectAll(query1, query2).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -844,7 +845,7 @@ func TestCompoundQuery_ExceptAll(t *testing.T) {
 	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 
-	result, err := astql.ExceptAll(query1, query2).Render()
+	result, err := astql.ExceptAll(query1, query2).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -864,7 +865,7 @@ func TestCompoundQuery_WithOrderByLimit(t *testing.T) {
 		OrderBy(instance.F("username"), types.ASC).
 		Limit(10).
 		Offset(5).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -883,7 +884,7 @@ func TestCompoundQuery_Chain(t *testing.T) {
 
 	result, err := astql.Union(query1, query2).
 		Intersect(query3).
-		Render()
+		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -900,7 +901,7 @@ func TestBuilder_Union(t *testing.T) {
 	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 
-	result, err := query1.Union(query2).Render()
+	result, err := query1.Union(query2).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -915,7 +916,7 @@ func TestBuilder_UnionAll(t *testing.T) {
 	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 
-	result, err := query1.UnionAll(query2).Render()
+	result, err := query1.UnionAll(query2).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -930,7 +931,7 @@ func TestBuilder_Intersect(t *testing.T) {
 	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 
-	result, err := query1.Intersect(query2).Render()
+	result, err := query1.Intersect(query2).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -945,7 +946,7 @@ func TestBuilder_IntersectAll(t *testing.T) {
 	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 
-	result, err := query1.IntersectAll(query2).Render()
+	result, err := query1.IntersectAll(query2).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -960,7 +961,7 @@ func TestBuilder_Except(t *testing.T) {
 	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 
-	result, err := query1.Except(query2).Render()
+	result, err := query1.Except(query2).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -975,7 +976,7 @@ func TestBuilder_ExceptAll(t *testing.T) {
 	query1 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 
-	result, err := query1.ExceptAll(query2).Render()
+	result, err := query1.ExceptAll(query2).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -992,7 +993,7 @@ func TestCompoundBuilder_Union(t *testing.T) {
 	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 	query3 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 
-	result, err := astql.Intersect(query1, query2).Union(query3).Render()
+	result, err := astql.Intersect(query1, query2).Union(query3).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1008,7 +1009,7 @@ func TestCompoundBuilder_UnionAll(t *testing.T) {
 	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 	query3 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 
-	result, err := astql.Intersect(query1, query2).UnionAll(query3).Render()
+	result, err := astql.Intersect(query1, query2).UnionAll(query3).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1024,7 +1025,7 @@ func TestCompoundBuilder_IntersectAll(t *testing.T) {
 	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 	query3 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 
-	result, err := astql.Union(query1, query2).IntersectAll(query3).Render()
+	result, err := astql.Union(query1, query2).IntersectAll(query3).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1040,7 +1041,7 @@ func TestCompoundBuilder_Except(t *testing.T) {
 	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 	query3 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 
-	result, err := astql.Union(query1, query2).Except(query3).Render()
+	result, err := astql.Union(query1, query2).Except(query3).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1056,7 +1057,7 @@ func TestCompoundBuilder_ExceptAll(t *testing.T) {
 	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 	query3 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 
-	result, err := astql.Union(query1, query2).ExceptAll(query3).Render()
+	result, err := astql.Union(query1, query2).ExceptAll(query3).Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -1085,7 +1086,7 @@ func TestCompoundBuilder_MustRender(t *testing.T) {
 	query2 := astql.Select(instance.T("users")).Fields(instance.F("id"))
 
 	// Should not panic
-	result := astql.Union(query1, query2).MustRender()
+	result := astql.Union(query1, query2).MustRender(postgres.New())
 	if result.SQL == "" {
 		t.Error("Expected non-empty SQL")
 	}

@@ -1,4 +1,4 @@
-.PHONY: test test-race test-integration bench lint lint-fix coverage clean install-tools all help check ci
+.PHONY: test test-race test-integration bench lint lint-fix coverage coverage-all clean install-tools install-hooks all help check ci
 
 # Default target
 all: test lint
@@ -16,14 +16,16 @@ help:
 	@echo "  make bench            - Run benchmarks"
 	@echo "  make lint             - Run golangci-lint"
 	@echo "  make lint-fix         - Run golangci-lint with auto-fix"
-	@echo "  make coverage         - Generate coverage report (HTML)"
-	@echo "  make check            - Run tests and lint (quick check)"
+	@echo "  make coverage         - Generate coverage report (unit tests)"
+	@echo "  make coverage-all     - Generate coverage report (all tests, requires Docker)"
+	@echo "  make check            - Run lint + tests with race detector (pre-commit)"
+	@echo "  make ci               - Full CI simulation locally (requires Docker)"
 	@echo ""
 	@echo "Other:"
 	@echo "  make install-tools    - Install required development tools"
+	@echo "  make install-hooks    - Install git pre-commit hook"
 	@echo "  make clean            - Clean generated files"
 	@echo "  make all              - Run tests and lint (default)"
-	@echo "  make ci               - Full CI simulation"
 
 # Run unit tests only (skip integration tests)
 test:
@@ -68,6 +70,16 @@ coverage:
 	@go tool cover -func=coverage.out | tail -1
 	@echo "Coverage report generated: coverage.html"
 
+# Generate coverage report including integration tests (requires Docker)
+coverage-all:
+	@echo "Generating full coverage report (including integration tests)..."
+	@go test -coverprofile=coverage.out \
+		-coverpkg=github.com/zoobzio/astql,github.com/zoobzio/astql/pkg/postgres,github.com/zoobzio/astql/pkg/mysql,github.com/zoobzio/astql/pkg/mssql,github.com/zoobzio/astql/pkg/sqlite \
+		./...
+	@go tool cover -html=coverage.out -o coverage.html
+	@go tool cover -func=coverage.out | tail -1
+	@echo "Full coverage report generated: coverage.html"
+
 # Clean generated files
 clean:
 	@echo "Cleaning..."
@@ -82,10 +94,19 @@ install-tools:
 	@echo "Installing development tools..."
 	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
-# Quick check - run tests and lint
-check: test lint
+# Install git pre-commit hook
+install-hooks:
+	@echo "Installing git hooks..."
+	@mkdir -p .git/hooks
+	@echo '#!/bin/sh' > .git/hooks/pre-commit
+	@echo 'make check' >> .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo "Pre-commit hook installed!"
+
+# Quick check - run tests with race detector and lint (pre-commit)
+check: lint test-race
 	@echo "All checks passed!"
 
-# CI simulation - what CI runs
-ci: clean lint test-race coverage bench
+# CI simulation - full CI pipeline locally (requires Docker)
+ci: clean lint test-race test-integration coverage-all bench
 	@echo "CI simulation complete!"
