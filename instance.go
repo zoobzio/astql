@@ -395,6 +395,11 @@ func (*ASTQL) ConditionItems() []types.ConditionItem {
 	return []types.ConditionItem{}
 }
 
+// Params returns an empty slice of Param for programmatic query building.
+func (*ASTQL) Params() []types.Param {
+	return []types.Param{}
+}
+
 // ValueMap returns an empty map for programmatic INSERT value building.
 func (*ASTQL) ValueMap() map[types.Field]types.Param {
 	return make(map[types.Field]types.Param)

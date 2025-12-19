@@ -559,6 +559,41 @@ func TestFactories_ConditionItemsWithOr(t *testing.T) {
 	}
 }
 
+func TestFactories_ProgrammaticParams(t *testing.T) {
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("id", "bigint"))
+	users.AddColumn(dbml.NewColumn("username", "varchar"))
+	users.AddColumn(dbml.NewColumn("email", "varchar"))
+	users.AddColumn(dbml.NewColumn("age", "int"))
+	project.AddTable(users)
+
+	instance, err := astql.NewFromDBML(project)
+	if err != nil {
+		t.Fatalf("Failed to create instance: %v", err)
+	}
+
+	// Simulate collecting params dynamically for batch condition building
+	paramNames := []string{"min_age", "max_age", "status"}
+
+	params := instance.Params()
+	for _, name := range paramNames {
+		params = append(params, instance.P(name))
+	}
+
+	// Verify we collected the expected params
+	if len(params) != 3 {
+		t.Errorf("Expected 3 params, got %d", len(params))
+	}
+
+	expectedNames := []string{"min_age", "max_age", "status"}
+	for i, p := range params {
+		if p.GetName() != expectedNames[i] {
+			t.Errorf("Expected param name %s, got %s", expectedNames[i], p.GetName())
+		}
+	}
+}
+
 // Test Operation accessor methods.
 func TestOperationAccessors(t *testing.T) {
 	instance := createTestInstance(t)
