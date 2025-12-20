@@ -1031,3 +1031,220 @@ func TestRender_IsNotNull(t *testing.T) {
 		t.Errorf("SQL = %q, want %q", result.SQL, expected)
 	}
 }
+
+// =============================================================================
+// Additional RenderCompound Tests
+// =============================================================================
+
+func TestRenderCompound_UnionAll(t *testing.T) {
+	r := New()
+	query := &types.CompoundQuery{
+		Base: &types.AST{
+			Operation: types.OpSelect,
+			Target:    types.Table{Name: "users"},
+			Fields:    []types.Field{{Name: "id"}},
+		},
+		Operands: []types.SetOperand{
+			{
+				Operation: types.SetUnionAll,
+				AST: &types.AST{
+					Operation: types.OpSelect,
+					Target:    types.Table{Name: "admins"},
+					Fields:    []types.Field{{Name: "id"}},
+				},
+			},
+		},
+	}
+
+	result, err := r.RenderCompound(query)
+	if err != nil {
+		t.Fatalf("RenderCompound() error = %v", err)
+	}
+
+	expected := "(SELECT `id` FROM `users`) UNION ALL (SELECT `id` FROM `admins`)"
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRenderCompound_Intersect(t *testing.T) {
+	r := New()
+	query := &types.CompoundQuery{
+		Base: &types.AST{
+			Operation: types.OpSelect,
+			Target:    types.Table{Name: "users"},
+			Fields:    []types.Field{{Name: "id"}},
+		},
+		Operands: []types.SetOperand{
+			{
+				Operation: types.SetIntersect,
+				AST: &types.AST{
+					Operation: types.OpSelect,
+					Target:    types.Table{Name: "active_users"},
+					Fields:    []types.Field{{Name: "id"}},
+				},
+			},
+		},
+	}
+
+	result, err := r.RenderCompound(query)
+	if err != nil {
+		t.Fatalf("RenderCompound() error = %v", err)
+	}
+
+	expected := "(SELECT `id` FROM `users`) INTERSECT (SELECT `id` FROM `active_users`)"
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRenderCompound_Except(t *testing.T) {
+	r := New()
+	query := &types.CompoundQuery{
+		Base: &types.AST{
+			Operation: types.OpSelect,
+			Target:    types.Table{Name: "users"},
+			Fields:    []types.Field{{Name: "id"}},
+		},
+		Operands: []types.SetOperand{
+			{
+				Operation: types.SetExcept,
+				AST: &types.AST{
+					Operation: types.OpSelect,
+					Target:    types.Table{Name: "banned_users"},
+					Fields:    []types.Field{{Name: "id"}},
+				},
+			},
+		},
+	}
+
+	result, err := r.RenderCompound(query)
+	if err != nil {
+		t.Fatalf("RenderCompound() error = %v", err)
+	}
+
+	expected := "(SELECT `id` FROM `users`) EXCEPT (SELECT `id` FROM `banned_users`)"
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRenderCompound_WithOrderByLimit(t *testing.T) {
+	r := New()
+	limitVal := 10
+	limit := types.PaginationValue{Static: &limitVal}
+	query := &types.CompoundQuery{
+		Base: &types.AST{
+			Operation: types.OpSelect,
+			Target:    types.Table{Name: "users"},
+			Fields:    []types.Field{{Name: "id"}, {Name: "name"}},
+		},
+		Operands: []types.SetOperand{
+			{
+				Operation: types.SetUnion,
+				AST: &types.AST{
+					Operation: types.OpSelect,
+					Target:    types.Table{Name: "admins"},
+					Fields:    []types.Field{{Name: "id"}, {Name: "name"}},
+				},
+			},
+		},
+		Ordering: []types.OrderBy{{Field: types.Field{Name: "name"}, Direction: types.ASC}},
+		Limit:    &limit,
+	}
+
+	result, err := r.RenderCompound(query)
+	if err != nil {
+		t.Fatalf("RenderCompound() error = %v", err)
+	}
+
+	expected := "(SELECT `id`, `name` FROM `users`) UNION (SELECT `id`, `name` FROM `admins`) ORDER BY `name` ASC LIMIT 10"
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRenderCompound_MultipleOperations(t *testing.T) {
+	r := New()
+	query := &types.CompoundQuery{
+		Base: &types.AST{
+			Operation: types.OpSelect,
+			Target:    types.Table{Name: "users"},
+			Fields:    []types.Field{{Name: "id"}},
+		},
+		Operands: []types.SetOperand{
+			{
+				Operation: types.SetUnion,
+				AST: &types.AST{
+					Operation: types.OpSelect,
+					Target:    types.Table{Name: "admins"},
+					Fields:    []types.Field{{Name: "id"}},
+				},
+			},
+			{
+				Operation: types.SetIntersect,
+				AST: &types.AST{
+					Operation: types.OpSelect,
+					Target:    types.Table{Name: "active_users"},
+					Fields:    []types.Field{{Name: "id"}},
+				},
+			},
+		},
+	}
+
+	result, err := r.RenderCompound(query)
+	if err != nil {
+		t.Fatalf("RenderCompound() error = %v", err)
+	}
+
+	expected := "(SELECT `id` FROM `users`) UNION (SELECT `id` FROM `admins`) INTERSECT (SELECT `id` FROM `active_users`)"
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRenderCompound_ParameterNamespacing(t *testing.T) {
+	r := New()
+	query := &types.CompoundQuery{
+		Base: &types.AST{
+			Operation: types.OpSelect,
+			Target:    types.Table{Name: "users"},
+			Fields:    []types.Field{{Name: "id"}},
+			WhereClause: types.Condition{
+				Field:    types.Field{Name: "active"},
+				Operator: types.EQ,
+				Value:    types.Param{Name: "is_active"},
+			},
+		},
+		Operands: []types.SetOperand{
+			{
+				Operation: types.SetUnion,
+				AST: &types.AST{
+					Operation: types.OpSelect,
+					Target:    types.Table{Name: "admins"},
+					Fields:    []types.Field{{Name: "id"}},
+					WhereClause: types.Condition{
+						Field:    types.Field{Name: "active"},
+						Operator: types.EQ,
+						Value:    types.Param{Name: "is_active"},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := r.RenderCompound(query)
+	if err != nil {
+		t.Fatalf("RenderCompound() error = %v", err)
+	}
+
+	// Parameters should be namespaced with q0_ and q1_ prefixes
+	expected := "(SELECT `id` FROM `users` WHERE `active` = :q0_is_active) UNION (SELECT `id` FROM `admins` WHERE `active` = :q1_is_active)"
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+
+	if len(result.RequiredParams) != 2 {
+		t.Errorf("RequiredParams = %v, want 2 params", result.RequiredParams)
+	}
+}

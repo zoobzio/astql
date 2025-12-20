@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/zoobzio/astql"
+	"github.com/zoobzio/astql/internal/types"
 	"github.com/zoobzio/astql/pkg/postgres"
 	"github.com/zoobzio/dbml"
 )
@@ -1524,5 +1525,702 @@ func TestMaxOver(t *testing.T) {
 
 	if !strings.Contains(result.SQL, "MAX") {
 		t.Errorf("Expected MAX in SQL: %s", result.SQL)
+	}
+}
+
+// =============================================================================
+// Math Function Tests
+// =============================================================================
+
+func createMathTestInstance(t *testing.T) *astql.ASTQL {
+	t.Helper()
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("id", "bigint"))
+	users.AddColumn(dbml.NewColumn("score", "numeric"))
+	users.AddColumn(dbml.NewColumn("balance", "numeric"))
+	project.AddTable(users)
+
+	instance, err := astql.NewFromDBML(project)
+	if err != nil {
+		t.Fatalf("Failed to create instance: %v", err)
+	}
+	return instance
+}
+
+func TestRound_Basic(t *testing.T) {
+	instance := createMathTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Round(instance.F("score")), "rounded")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "ROUND") {
+		t.Errorf("Expected ROUND in SQL: %s", result.SQL)
+	}
+}
+
+func TestRound_WithPrecision(t *testing.T) {
+	instance := createMathTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Round(instance.F("score"), instance.P("precision")), "rounded")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "ROUND") {
+		t.Errorf("Expected ROUND in SQL: %s", result.SQL)
+	}
+	if !contains(result.RequiredParams, "precision") {
+		t.Errorf("Expected precision param: %v", result.RequiredParams)
+	}
+}
+
+func TestFloor_Basic(t *testing.T) {
+	instance := createMathTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Floor(instance.F("score")), "floored")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "FLOOR") {
+		t.Errorf("Expected FLOOR in SQL: %s", result.SQL)
+	}
+}
+
+func TestCeil_Basic(t *testing.T) {
+	instance := createMathTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Ceil(instance.F("score")), "ceiled")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "CEIL") {
+		t.Errorf("Expected CEIL in SQL: %s", result.SQL)
+	}
+}
+
+func TestAbs_Basic(t *testing.T) {
+	instance := createMathTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Abs(instance.F("balance")), "absolute")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "ABS") {
+		t.Errorf("Expected ABS in SQL: %s", result.SQL)
+	}
+}
+
+func TestPower_Basic(t *testing.T) {
+	instance := createMathTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Power(instance.F("score"), instance.P("exponent")), "powered")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "POWER") {
+		t.Errorf("Expected POWER in SQL: %s", result.SQL)
+	}
+	if !contains(result.RequiredParams, "exponent") {
+		t.Errorf("Expected exponent param: %v", result.RequiredParams)
+	}
+}
+
+func TestSqrt_Basic(t *testing.T) {
+	instance := createMathTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Sqrt(instance.F("score")), "root")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "SQRT") {
+		t.Errorf("Expected SQRT in SQL: %s", result.SQL)
+	}
+}
+
+// =============================================================================
+// String Function Tests
+// =============================================================================
+
+func createStringTestInstance(t *testing.T) *astql.ASTQL {
+	t.Helper()
+	project := dbml.NewProject("test")
+	users := dbml.NewTable("users")
+	users.AddColumn(dbml.NewColumn("id", "bigint"))
+	users.AddColumn(dbml.NewColumn("name", "varchar"))
+	users.AddColumn(dbml.NewColumn("email", "varchar"))
+	project.AddTable(users)
+
+	instance, err := astql.NewFromDBML(project)
+	if err != nil {
+		t.Fatalf("Failed to create instance: %v", err)
+	}
+	return instance
+}
+
+func TestUpper_Basic(t *testing.T) {
+	instance := createStringTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Upper(instance.F("name")), "upper_name")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "UPPER") {
+		t.Errorf("Expected UPPER in SQL: %s", result.SQL)
+	}
+}
+
+func TestLower_Basic(t *testing.T) {
+	instance := createStringTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Lower(instance.F("name")), "lower_name")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "LOWER") {
+		t.Errorf("Expected LOWER in SQL: %s", result.SQL)
+	}
+}
+
+func TestTrim_Basic(t *testing.T) {
+	instance := createStringTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Trim(instance.F("name")), "trimmed")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "TRIM") {
+		t.Errorf("Expected TRIM in SQL: %s", result.SQL)
+	}
+}
+
+func TestLTrim_Basic(t *testing.T) {
+	instance := createStringTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.LTrim(instance.F("name")), "ltrimmed")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "LTRIM") {
+		t.Errorf("Expected LTRIM in SQL: %s", result.SQL)
+	}
+}
+
+func TestRTrim_Basic(t *testing.T) {
+	instance := createStringTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.RTrim(instance.F("name")), "rtrimmed")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "RTRIM") {
+		t.Errorf("Expected RTRIM in SQL: %s", result.SQL)
+	}
+}
+
+func TestLength_Basic(t *testing.T) {
+	instance := createStringTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Length(instance.F("name")), "name_len")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "LENGTH") {
+		t.Errorf("Expected LENGTH in SQL: %s", result.SQL)
+	}
+}
+
+func TestSubstring_Basic(t *testing.T) {
+	instance := createStringTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Substring(instance.F("name"), instance.P("start"), instance.P("len")), "substr")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "SUBSTRING") {
+		t.Errorf("Expected SUBSTRING in SQL: %s", result.SQL)
+	}
+	if len(result.RequiredParams) != 2 {
+		t.Errorf("Expected 2 params, got %d: %v", len(result.RequiredParams), result.RequiredParams)
+	}
+}
+
+func TestReplace_Basic(t *testing.T) {
+	instance := createStringTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Replace(instance.F("name"), instance.P("search"), instance.P("replacement")), "replaced")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "REPLACE") {
+		t.Errorf("Expected REPLACE in SQL: %s", result.SQL)
+	}
+	if len(result.RequiredParams) != 2 {
+		t.Errorf("Expected 2 params, got %d: %v", len(result.RequiredParams), result.RequiredParams)
+	}
+}
+
+func TestConcat_Basic(t *testing.T) {
+	instance := createStringTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Concat(instance.F("name"), instance.F("email")), "combined")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "CONCAT") {
+		t.Errorf("Expected CONCAT in SQL: %s", result.SQL)
+	}
+}
+
+// =============================================================================
+// Date Function Tests
+// =============================================================================
+
+func createDateTestInstance(t *testing.T) *astql.ASTQL {
+	t.Helper()
+	project := dbml.NewProject("test")
+	events := dbml.NewTable("events")
+	events.AddColumn(dbml.NewColumn("id", "bigint"))
+	events.AddColumn(dbml.NewColumn("created_at", "timestamp"))
+	events.AddColumn(dbml.NewColumn("updated_at", "timestamp"))
+	project.AddTable(events)
+
+	instance, err := astql.NewFromDBML(project)
+	if err != nil {
+		t.Fatalf("Failed to create instance: %v", err)
+	}
+	return instance
+}
+
+func TestNow_Basic(t *testing.T) {
+	instance := createDateTestInstance(t)
+
+	result, err := astql.Select(instance.T("events")).
+		SelectExpr(astql.As(astql.Now(), "current_time")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "NOW()") {
+		t.Errorf("Expected NOW() in SQL: %s", result.SQL)
+	}
+}
+
+func TestCurrentDate_Basic(t *testing.T) {
+	instance := createDateTestInstance(t)
+
+	result, err := astql.Select(instance.T("events")).
+		SelectExpr(astql.As(astql.CurrentDate(), "today")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "CURRENT_DATE") {
+		t.Errorf("Expected CURRENT_DATE in SQL: %s", result.SQL)
+	}
+}
+
+func TestCurrentTime_Basic(t *testing.T) {
+	instance := createDateTestInstance(t)
+
+	result, err := astql.Select(instance.T("events")).
+		SelectExpr(astql.As(astql.CurrentTime(), "now_time")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "CURRENT_TIME") {
+		t.Errorf("Expected CURRENT_TIME in SQL: %s", result.SQL)
+	}
+}
+
+func TestCurrentTimestamp_Basic(t *testing.T) {
+	instance := createDateTestInstance(t)
+
+	result, err := astql.Select(instance.T("events")).
+		SelectExpr(astql.As(astql.CurrentTimestamp(), "ts")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "CURRENT_TIMESTAMP") {
+		t.Errorf("Expected CURRENT_TIMESTAMP in SQL: %s", result.SQL)
+	}
+}
+
+func TestExtract_Year(t *testing.T) {
+	instance := createDateTestInstance(t)
+
+	result, err := astql.Select(instance.T("events")).
+		SelectExpr(astql.As(astql.Extract(types.PartYear, instance.F("created_at")), "year")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "EXTRACT") && !strings.Contains(result.SQL, "YEAR") {
+		t.Errorf("Expected EXTRACT with YEAR in SQL: %s", result.SQL)
+	}
+}
+
+func TestExtract_Month(t *testing.T) {
+	instance := createDateTestInstance(t)
+
+	result, err := astql.Select(instance.T("events")).
+		SelectExpr(astql.As(astql.Extract(types.PartMonth, instance.F("created_at")), "month")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "EXTRACT") {
+		t.Errorf("Expected EXTRACT in SQL: %s", result.SQL)
+	}
+}
+
+func TestDateTrunc_Month(t *testing.T) {
+	instance := createDateTestInstance(t)
+
+	result, err := astql.Select(instance.T("events")).
+		SelectExpr(astql.As(astql.DateTrunc(types.PartMonth, instance.F("created_at")), "month_start")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "DATE_TRUNC") {
+		t.Errorf("Expected DATE_TRUNC in SQL: %s", result.SQL)
+	}
+}
+
+func TestDateTrunc_Day(t *testing.T) {
+	instance := createDateTestInstance(t)
+
+	result, err := astql.Select(instance.T("events")).
+		SelectExpr(astql.As(astql.DateTrunc(types.PartDay, instance.F("created_at")), "day_start")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "DATE_TRUNC") {
+		t.Errorf("Expected DATE_TRUNC in SQL: %s", result.SQL)
+	}
+}
+
+// =============================================================================
+// HAVING Aggregate Tests
+// =============================================================================
+
+func createHavingTestInstance(t *testing.T) *astql.ASTQL {
+	t.Helper()
+	project := dbml.NewProject("test")
+	orders := dbml.NewTable("orders")
+	orders.AddColumn(dbml.NewColumn("id", "bigint"))
+	orders.AddColumn(dbml.NewColumn("user_id", "bigint"))
+	orders.AddColumn(dbml.NewColumn("total", "numeric"))
+	orders.AddColumn(dbml.NewColumn("quantity", "int"))
+	project.AddTable(orders)
+
+	instance, err := astql.NewFromDBML(project)
+	if err != nil {
+		t.Fatalf("Failed to create instance: %v", err)
+	}
+	return instance
+}
+
+func TestHavingSum_Basic(t *testing.T) {
+	instance := createHavingTestInstance(t)
+
+	result, err := astql.Select(instance.T("orders")).
+		Fields(instance.F("user_id")).
+		SelectExpr(astql.As(astql.Sum(instance.F("total")), "total_amount")).
+		GroupBy(instance.F("user_id")).
+		HavingAgg(astql.HavingSum(instance.F("total"), astql.GT, instance.P("min_total"))).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "HAVING") {
+		t.Errorf("Expected HAVING in SQL: %s", result.SQL)
+	}
+	if !strings.Contains(result.SQL, "SUM") {
+		t.Errorf("Expected SUM in SQL: %s", result.SQL)
+	}
+}
+
+func TestHavingAvg_Basic(t *testing.T) {
+	instance := createHavingTestInstance(t)
+
+	result, err := astql.Select(instance.T("orders")).
+		Fields(instance.F("user_id")).
+		GroupBy(instance.F("user_id")).
+		HavingAgg(astql.HavingAvg(instance.F("total"), astql.GE, instance.P("min_avg"))).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "HAVING") {
+		t.Errorf("Expected HAVING in SQL: %s", result.SQL)
+	}
+	if !strings.Contains(result.SQL, "AVG") {
+		t.Errorf("Expected AVG in SQL: %s", result.SQL)
+	}
+}
+
+func TestHavingMin_Basic(t *testing.T) {
+	instance := createHavingTestInstance(t)
+
+	result, err := astql.Select(instance.T("orders")).
+		Fields(instance.F("user_id")).
+		GroupBy(instance.F("user_id")).
+		HavingAgg(astql.HavingMin(instance.F("total"), astql.GT, instance.P("threshold"))).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "HAVING") {
+		t.Errorf("Expected HAVING in SQL: %s", result.SQL)
+	}
+	if !strings.Contains(result.SQL, "MIN") {
+		t.Errorf("Expected MIN in SQL: %s", result.SQL)
+	}
+}
+
+func TestHavingMax_Basic(t *testing.T) {
+	instance := createHavingTestInstance(t)
+
+	result, err := astql.Select(instance.T("orders")).
+		Fields(instance.F("user_id")).
+		GroupBy(instance.F("user_id")).
+		HavingAgg(astql.HavingMax(instance.F("total"), astql.LT, instance.P("max_limit"))).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "HAVING") {
+		t.Errorf("Expected HAVING in SQL: %s", result.SQL)
+	}
+	if !strings.Contains(result.SQL, "MAX") {
+		t.Errorf("Expected MAX in SQL: %s", result.SQL)
+	}
+}
+
+func TestHavingCountDistinct_Basic(t *testing.T) {
+	instance := createHavingTestInstance(t)
+
+	result, err := astql.Select(instance.T("orders")).
+		Fields(instance.F("user_id")).
+		GroupBy(instance.F("user_id")).
+		HavingAgg(astql.HavingCountDistinct(instance.F("id"), astql.GE, instance.P("min_orders"))).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "HAVING") {
+		t.Errorf("Expected HAVING in SQL: %s", result.SQL)
+	}
+	if !strings.Contains(result.SQL, "COUNT") {
+		t.Errorf("Expected COUNT in SQL: %s", result.SQL)
+	}
+}
+
+// =============================================================================
+// Coalesce and NullIf Tests
+// =============================================================================
+
+func TestCoalesce_TwoValues(t *testing.T) {
+	instance := createMathTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Coalesce(instance.P("val1"), instance.P("val2")), "result")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "COALESCE") {
+		t.Errorf("Expected COALESCE in SQL: %s", result.SQL)
+	}
+}
+
+func TestCoalesce_ThreeValues(t *testing.T) {
+	instance := createMathTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.Coalesce(instance.P("val1"), instance.P("val2"), instance.P("val3")), "result")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "COALESCE") {
+		t.Errorf("Expected COALESCE in SQL: %s", result.SQL)
+	}
+	if len(result.RequiredParams) != 3 {
+		t.Errorf("Expected 3 params, got %d: %v", len(result.RequiredParams), result.RequiredParams)
+	}
+}
+
+func TestCoalesce_PanicOnSingleValue(t *testing.T) {
+	instance := createMathTestInstance(t)
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Expected panic for Coalesce with single value")
+		}
+	}()
+
+	astql.Coalesce(instance.P("val1"))
+}
+
+func TestNullIf_Basic(t *testing.T) {
+	instance := createMathTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.As(astql.NullIf(instance.P("val1"), instance.P("val2")), "result")).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "NULLIF") {
+		t.Errorf("Expected NULLIF in SQL: %s", result.SQL)
+	}
+}
+
+// =============================================================================
+// Cast Variant Tests
+// =============================================================================
+
+func TestCast_ToNumeric(t *testing.T) {
+	instance := createStringTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.Cast(instance.F("id"), astql.CastNumeric)).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "CAST") && !strings.Contains(result.SQL, "NUMERIC") {
+		t.Errorf("Expected CAST to NUMERIC in SQL: %s", result.SQL)
+	}
+}
+
+func TestCast_ToBoolean(t *testing.T) {
+	instance := createStringTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.Cast(instance.F("id"), astql.CastBoolean)).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "CAST") {
+		t.Errorf("Expected CAST in SQL: %s", result.SQL)
+	}
+}
+
+func TestCast_ToDate(t *testing.T) {
+	instance := createStringTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.Cast(instance.F("name"), astql.CastDate)).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "CAST") && !strings.Contains(result.SQL, "DATE") {
+		t.Errorf("Expected CAST to DATE in SQL: %s", result.SQL)
+	}
+}
+
+func TestCast_ToReal(t *testing.T) {
+	instance := createStringTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.Cast(instance.F("id"), astql.CastReal)).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "CAST") {
+		t.Errorf("Expected CAST in SQL: %s", result.SQL)
+	}
+}
+
+func TestCast_ToText_FromNumeric(t *testing.T) {
+	instance := createMathTestInstance(t)
+
+	result, err := astql.Select(instance.T("users")).
+		SelectExpr(astql.Cast(instance.F("score"), astql.CastText)).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(result.SQL, "CAST") {
+		t.Errorf("Expected CAST in SQL: %s", result.SQL)
 	}
 }
