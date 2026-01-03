@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/zoobzio/astql/internal/render"
 	"github.com/zoobzio/astql/internal/types"
 )
 
@@ -1172,5 +1173,19 @@ func (r *Renderer) renderOperator(op types.Operator) string {
 		return "<+>"
 	default:
 		return string(op)
+	}
+}
+
+// Capabilities returns the SQL features supported by PostgreSQL.
+func (r *Renderer) Capabilities() render.Capabilities {
+	return render.Capabilities{
+		DistinctOn:          true,
+		Upsert:              true,
+		Returning:           true,
+		CaseInsensitiveLike: true,
+		RegexOperators:      true,
+		ArrayOperators:      true,
+		InArray:             true,
+		RowLocking:          render.RowLockingFull,
 	}
 }

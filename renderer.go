@@ -1,6 +1,9 @@
 package astql
 
-import "github.com/zoobzio/astql/internal/types"
+import (
+	"github.com/zoobzio/astql/internal/render"
+	"github.com/zoobzio/astql/internal/types"
+)
 
 // Renderer defines the interface for SQL dialect-specific rendering.
 // Implementations convert an AST to dialect-specific SQL with named parameters.
@@ -10,4 +13,7 @@ type Renderer interface {
 
 	// RenderCompound converts a CompoundQuery (UNION, INTERSECT, EXCEPT) to SQL.
 	RenderCompound(query *types.CompoundQuery) (*types.QueryResult, error)
+
+	// Capabilities returns the SQL features supported by this dialect.
+	Capabilities() render.Capabilities
 }

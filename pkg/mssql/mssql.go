@@ -1229,3 +1229,17 @@ func (r *Renderer) renderOperator(op types.Operator) string {
 		return string(op)
 	}
 }
+
+// Capabilities returns the SQL features supported by SQL Server.
+func (r *Renderer) Capabilities() render.Capabilities {
+	return render.Capabilities{
+		DistinctOn:          false,
+		Upsert:              false,
+		Returning:           false,
+		CaseInsensitiveLike: false,
+		RegexOperators:      false,
+		ArrayOperators:      false,
+		InArray:             true,
+		RowLocking:          render.RowLockingNone,
+	}
+}

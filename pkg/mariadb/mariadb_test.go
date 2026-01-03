@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zoobzio/astql/internal/render"
 	"github.com/zoobzio/astql/internal/types"
 )
 
@@ -1300,5 +1301,35 @@ func TestRenderCompound_ParameterNamespacing(t *testing.T) {
 
 	if len(result.RequiredParams) != 2 {
 		t.Errorf("RequiredParams = %v, want 2 params", result.RequiredParams)
+	}
+}
+
+func TestCapabilities(t *testing.T) {
+	r := New()
+	caps := r.Capabilities()
+
+	if caps.DistinctOn {
+		t.Error("DistinctOn should be false")
+	}
+	if !caps.Upsert {
+		t.Error("Upsert should be true")
+	}
+	if !caps.Returning {
+		t.Error("Returning should be true")
+	}
+	if !caps.CaseInsensitiveLike {
+		t.Error("CaseInsensitiveLike should be true")
+	}
+	if caps.RegexOperators {
+		t.Error("RegexOperators should be false")
+	}
+	if caps.ArrayOperators {
+		t.Error("ArrayOperators should be false")
+	}
+	if !caps.InArray {
+		t.Error("InArray should be true")
+	}
+	if caps.RowLocking != render.RowLockingBasic {
+		t.Errorf("RowLocking = %v, want RowLockingBasic", caps.RowLocking)
 	}
 }

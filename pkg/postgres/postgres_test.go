@@ -3,6 +3,7 @@ package postgres
 import (
 	"testing"
 
+	"github.com/zoobzio/astql/internal/render"
 	"github.com/zoobzio/astql/internal/types"
 )
 
@@ -1568,5 +1569,35 @@ func TestRenderCompound_ParameterNamespacing(t *testing.T) {
 	// Should have both namespaced parameters
 	if len(result.RequiredParams) != 2 {
 		t.Errorf("RequiredParams = %v, want 2 params", result.RequiredParams)
+	}
+}
+
+func TestCapabilities(t *testing.T) {
+	r := New()
+	caps := r.Capabilities()
+
+	if !caps.DistinctOn {
+		t.Error("DistinctOn should be true")
+	}
+	if !caps.Upsert {
+		t.Error("Upsert should be true")
+	}
+	if !caps.Returning {
+		t.Error("Returning should be true")
+	}
+	if !caps.CaseInsensitiveLike {
+		t.Error("CaseInsensitiveLike should be true")
+	}
+	if !caps.RegexOperators {
+		t.Error("RegexOperators should be true")
+	}
+	if !caps.ArrayOperators {
+		t.Error("ArrayOperators should be true")
+	}
+	if !caps.InArray {
+		t.Error("InArray should be true")
+	}
+	if caps.RowLocking != render.RowLockingFull {
+		t.Errorf("RowLocking = %v, want RowLockingFull", caps.RowLocking)
 	}
 }

@@ -1209,3 +1209,17 @@ func (r *Renderer) renderOperator(op types.Operator) string {
 		return string(op)
 	}
 }
+
+// Capabilities returns the SQL features supported by MariaDB.
+func (r *Renderer) Capabilities() render.Capabilities {
+	return render.Capabilities{
+		DistinctOn:          false,
+		Upsert:              true,
+		Returning:           true,
+		CaseInsensitiveLike: true, // LIKE is case-insensitive by default
+		RegexOperators:      false,
+		ArrayOperators:      false,
+		InArray:             true,
+		RowLocking:          render.RowLockingBasic,
+	}
+}
