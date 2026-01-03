@@ -52,8 +52,8 @@ func TestRender_SelectWithWhere(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 
-	// SQL Server uses @ for parameters
-	expected := "SELECT [id] FROM [users] WHERE [active] = @is_active"
+	// sqlx converts : to @ for MSSQL
+	expected := "SELECT [id] FROM [users] WHERE [active] = :is_active"
 	if result.SQL != expected {
 		t.Errorf("SQL = %q, want %q", result.SQL, expected)
 	}
@@ -77,7 +77,7 @@ func TestRender_Insert(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 
-	expected := "INSERT INTO [users] ([email], [name]) VALUES (@email_val, @name_val)"
+	expected := "INSERT INTO [users] ([email], [name]) VALUES (:email_val, :name_val)"
 	if result.SQL != expected {
 		t.Errorf("SQL = %q, want %q", result.SQL, expected)
 	}
@@ -127,7 +127,7 @@ func TestRender_Update(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 
-	expected := "UPDATE [users] SET [name] = @new_name WHERE [id] = @user_id"
+	expected := "UPDATE [users] SET [name] = :new_name WHERE [id] = :user_id"
 	if result.SQL != expected {
 		t.Errorf("SQL = %q, want %q", result.SQL, expected)
 	}
@@ -150,7 +150,7 @@ func TestRender_Delete(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 
-	expected := "DELETE FROM [users] WHERE [id] = @user_id"
+	expected := "DELETE FROM [users] WHERE [id] = :user_id"
 	if result.SQL != expected {
 		t.Errorf("SQL = %q, want %q", result.SQL, expected)
 	}
@@ -655,7 +655,7 @@ func TestRender_BetweenCondition(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 
-	expected := "SELECT [name] FROM [products] WHERE [price] BETWEEN @min_price AND @max_price"
+	expected := "SELECT [name] FROM [products] WHERE [price] BETWEEN :min_price AND :max_price"
 	if result.SQL != expected {
 		t.Errorf("SQL = %q, want %q", result.SQL, expected)
 	}
@@ -1129,8 +1129,8 @@ func TestRenderCompound_ParameterNamespacing(t *testing.T) {
 		t.Fatalf("RenderCompound() error = %v", err)
 	}
 
-	// MSSQL uses @ prefix for parameters
-	expected := "(SELECT [id] FROM [users] WHERE [active] = @q0_is_active) UNION (SELECT [id] FROM [admins] WHERE [active] = @q1_is_active)"
+	// sqlx converts : to @ for MSSQL
+	expected := "(SELECT [id] FROM [users] WHERE [active] = :q0_is_active) UNION (SELECT [id] FROM [admins] WHERE [active] = :q1_is_active)"
 	if result.SQL != expected {
 		t.Errorf("SQL = %q, want %q", result.SQL, expected)
 	}

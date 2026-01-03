@@ -23,11 +23,11 @@
 // # Multi-Provider Support
 //
 // The package supports multiple SQL dialects through the Renderer interface.
-// Available providers: postgres, mysql, sqlite, mssql.
+// Available providers: postgres, mariadb, sqlite, mssql.
 //
-//	import "github.com/zoobzio/astql/pkg/mysql"
+//	import "github.com/zoobzio/astql/pkg/mariadb"
 //
-//	result, err := query.Render(mysql.New())
+//	result, err := query.Render(mariadb.New())
 //
 // # Schema-Validated Usage
 //

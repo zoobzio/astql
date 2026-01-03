@@ -1,5 +1,5 @@
-// Package mysql provides the MySQL dialect renderer for astql.
-package mysql
+// Package mariadb provides the MariaDB dialect renderer for astql.
+package mariadb
 
 import (
 	"fmt"
@@ -53,15 +53,15 @@ func (ctx *renderContext) addParam(param types.Param) string {
 	return ctx.paramCallback(param)
 }
 
-// Renderer implements the MySQL dialect renderer.
+// Renderer implements the MariaDB dialect renderer.
 type Renderer struct{}
 
-// New creates a new MySQL renderer.
+// New creates a new MariaDB renderer.
 func New() *Renderer {
 	return &Renderer{}
 }
 
-// Render converts an AST to a QueryResult with MySQL SQL.
+// Render converts an AST to a QueryResult with MariaDB SQL.
 func (r *Renderer) Render(ast *types.AST) (*types.QueryResult, error) {
 	// Validate unsupported features
 	if err := r.validateAST(ast); err != nil {
@@ -201,7 +201,7 @@ func (r *Renderer) RenderCompound(query *types.CompoundQuery) (*types.QueryResul
 // validateAST checks for MySQL-unsupported features.
 func (r *Renderer) validateAST(ast *types.AST) error {
 	if len(ast.DistinctOn) > 0 {
-		return render.NewUnsupportedFeatureError("mysql", "DISTINCT ON",
+		return render.NewUnsupportedFeatureError("mariadb", "DISTINCT ON",
 			"use GROUP BY with aggregates instead")
 	}
 
@@ -209,14 +209,9 @@ func (r *Renderer) validateAST(ast *types.AST) error {
 		// MySQL supports FOR UPDATE but with different syntax for some options
 		// For now, support basic FOR UPDATE/FOR SHARE
 		if *ast.Lock != types.LockForUpdate && *ast.Lock != types.LockForShare {
-			return render.NewUnsupportedFeatureError("mysql", "FOR NO KEY UPDATE/FOR KEY SHARE",
+			return render.NewUnsupportedFeatureError("mariadb", "FOR NO KEY UPDATE/FOR KEY SHARE",
 				"use FOR UPDATE or FOR SHARE instead")
 		}
-	}
-
-	if len(ast.Returning) > 0 {
-		return render.NewUnsupportedFeatureError("mysql", "RETURNING clause",
-			"use LAST_INSERT_ID() or separate SELECT after INSERT/UPDATE")
 	}
 
 	// Check for unsupported operators in conditions
@@ -275,13 +270,13 @@ func (r *Renderer) validateCondition(cond types.ConditionItem) error {
 func (r *Renderer) validateOperator(op types.Operator) error {
 	switch op {
 	case types.RegexMatch, types.RegexIMatch, types.NotRegexMatch, types.NotRegexIMatch:
-		return render.NewUnsupportedFeatureError("mysql", "PostgreSQL regex operators",
+		return render.NewUnsupportedFeatureError("mariadb", "PostgreSQL regex operators",
 			"use REGEXP or RLIKE instead")
 	case types.ArrayContains, types.ArrayContainedBy, types.ArrayOverlap:
-		return render.NewUnsupportedFeatureError("mysql", "array operators",
+		return render.NewUnsupportedFeatureError("mariadb", "array operators",
 			"MySQL does not have native array types")
 	case types.VectorL2Distance, types.VectorInnerProduct, types.VectorCosineDistance, types.VectorL1Distance:
-		return render.NewUnsupportedFeatureError("mysql", "vector operators",
+		return render.NewUnsupportedFeatureError("mariadb", "vector operators",
 			"MySQL does not support pgvector operations")
 	}
 	return nil
@@ -475,6 +470,16 @@ func (r *Renderer) renderInsert(ast *types.AST, sql *strings.Builder, addParam f
 		}
 	}
 
+	// RETURNING (MariaDB 10.5+)
+	if len(ast.Returning) > 0 {
+		sql.WriteString(" RETURNING ")
+		var fields []string
+		for _, field := range ast.Returning {
+			fields = append(fields, r.renderField(field))
+		}
+		sql.WriteString(strings.Join(fields, ", "))
+	}
+
 	return nil
 }
 
@@ -507,6 +512,16 @@ func (r *Renderer) renderUpdate(ast *types.AST, sql *strings.Builder, addParam f
 		}
 	}
 
+	// RETURNING (MariaDB 10.5+)
+	if len(ast.Returning) > 0 {
+		sql.WriteString(" RETURNING ")
+		var fields []string
+		for _, field := range ast.Returning {
+			fields = append(fields, r.renderField(field))
+		}
+		sql.WriteString(strings.Join(fields, ", "))
+	}
+
 	return nil
 }
 
@@ -520,6 +535,16 @@ func (r *Renderer) renderDelete(ast *types.AST, sql *strings.Builder, addParam f
 		if err := r.renderCondition(ast.WhereClause, sql, ctx); err != nil {
 			return err
 		}
+	}
+
+	// RETURNING (MariaDB 10.5+)
+	if len(ast.Returning) > 0 {
+		sql.WriteString(" RETURNING ")
+		var fields []string
+		for _, field := range ast.Returning {
+			fields = append(fields, r.renderField(field))
+		}
+		sql.WriteString(strings.Join(fields, ", "))
 	}
 
 	return nil
@@ -661,7 +686,7 @@ func (r *Renderer) renderFieldExpression(expr types.FieldExpression, ctx *render
 		result = r.renderAggregateExpression(expr.Aggregate, expr.Field)
 		if expr.Filter != nil {
 			// MySQL doesn't support FILTER clause - would need to use CASE WHEN
-			return "", render.NewUnsupportedFeatureError("mysql", "FILTER clause on aggregates",
+			return "", render.NewUnsupportedFeatureError("mariadb", "FILTER clause on aggregates",
 				"use CASE WHEN inside the aggregate instead")
 		}
 	default:
@@ -1040,7 +1065,7 @@ func (r *Renderer) renderDateExpression(expr types.DateExpression, _ *renderCont
 			sql.WriteString(r.renderField(*expr.Field))
 			sql.WriteString(", '%Y-01-01')")
 		default:
-			return "", render.NewUnsupportedFeatureError("mysql", fmt.Sprintf("DATE_TRUNC with %s precision", expr.Part),
+			return "", render.NewUnsupportedFeatureError("mariadb", fmt.Sprintf("DATE_TRUNC with %s precision", expr.Part),
 				"use DATE_FORMAT() with appropriate format string")
 		}
 	default:

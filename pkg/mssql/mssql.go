@@ -77,7 +77,7 @@ func (r *Renderer) Render(ast *types.AST) (*types.QueryResult, error) {
 	usedParams := make(map[string]bool)
 
 	addParam := func(param types.Param) string {
-		placeholder := "@" + param.Name
+		placeholder := ":" + param.Name
 		if !usedParams[param.Name] {
 			params = append(params, param.Name)
 			usedParams[param.Name] = true
@@ -139,7 +139,7 @@ func (r *Renderer) RenderCompound(query *types.CompoundQuery) (*types.QueryResul
 	makeParamCallback := func(prefix string) func(types.Param) string {
 		return func(param types.Param) string {
 			name := prefix + param.Name
-			placeholder := "@" + name
+			placeholder := ":" + name
 			if !usedParams[name] {
 				params = append(params, name)
 				usedParams[name] = true

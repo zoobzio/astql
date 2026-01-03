@@ -80,8 +80,8 @@ require (
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/microsoft/go-mssqldb v1.9.0
 	github.com/testcontainers/testcontainers-go v0.40.0
+	github.com/testcontainers/testcontainers-go/modules/mariadb v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/mssql v0.40.0
-	github.com/testcontainers/testcontainers-go/modules/mysql v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.40.0
 	github.com/zoobzio/dbml v0.0.3
 	modernc.org/sqlite v1.40.1

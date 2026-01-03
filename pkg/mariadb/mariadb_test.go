@@ -1,4 +1,4 @@
-package mysql
+package mariadb
 
 import (
 	"strings"
@@ -27,7 +27,7 @@ func TestRender_SimpleSelect(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 
-	// MySQL uses backticks for quoting
+	// MariaDB uses backticks for quoting
 	expected := "SELECT `id`, `name` FROM `users`"
 	if result.SQL != expected {
 		t.Errorf("SQL = %q, want %q", result.SQL, expected)
@@ -158,7 +158,7 @@ func TestRender_OnDuplicateKeyUpdate(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 
-	// MySQL uses ON DUPLICATE KEY UPDATE
+	// MariaDB uses ON DUPLICATE KEY UPDATE
 	if !strings.Contains(result.SQL, "ON DUPLICATE KEY UPDATE") {
 		t.Errorf("SQL = %q, want to contain 'ON DUPLICATE KEY UPDATE'", result.SQL)
 	}
@@ -186,13 +186,13 @@ func TestRender_OnDuplicateKeyDoNothing(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 
-	// MySQL DO NOTHING is simulated with a no-op update
+	// MariaDB DO NOTHING is simulated with a no-op update
 	if !strings.Contains(result.SQL, "ON DUPLICATE KEY UPDATE") {
 		t.Errorf("SQL = %q, want to contain 'ON DUPLICATE KEY UPDATE'", result.SQL)
 	}
 }
 
-func TestRender_RejectsReturning(t *testing.T) {
+func TestRender_InsertWithReturning(t *testing.T) {
 	r := New()
 	ast := &types.AST{
 		Operation: types.OpInsert,
@@ -205,12 +205,66 @@ func TestRender_RejectsReturning(t *testing.T) {
 		Returning: []types.Field{{Name: "id"}},
 	}
 
-	_, err := r.Render(ast)
-	if err == nil {
-		t.Fatal("expected error for RETURNING clause")
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
 	}
-	if !strings.Contains(err.Error(), "RETURNING") {
-		t.Errorf("error = %q, want to mention RETURNING", err.Error())
+
+	// MariaDB 10.5+ supports RETURNING
+	expected := "INSERT INTO `users` (`name`) VALUES (:name_val) RETURNING `id`"
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_UpdateWithReturning(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpUpdate,
+		Target:    types.Table{Name: "users"},
+		Updates: map[types.Field]types.Param{
+			{Name: "name"}: {Name: "new_name"},
+		},
+		WhereClause: types.Condition{
+			Field:    types.Field{Name: "id"},
+			Operator: types.EQ,
+			Value:    types.Param{Name: "user_id"},
+		},
+		Returning: []types.Field{{Name: "name"}},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := "UPDATE `users` SET `name` = :new_name WHERE `id` = :user_id RETURNING `name`"
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_DeleteWithReturning(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpDelete,
+		Target:    types.Table{Name: "users"},
+		WhereClause: types.Condition{
+			Field:    types.Field{Name: "id"},
+			Operator: types.EQ,
+			Value:    types.Param{Name: "user_id"},
+		},
+		Returning: []types.Field{{Name: "id"}, {Name: "name"}},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := "DELETE FROM `users` WHERE `id` = :user_id RETURNING `id`, `name`"
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
 	}
 }
 
@@ -269,7 +323,7 @@ func TestRender_SupportsIN(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 
-	// MySQL uses standard IN syntax
+	// MariaDB uses standard IN syntax
 	expected := "SELECT `id` FROM `users` WHERE `status` IN (:statuses)"
 	if result.SQL != expected {
 		t.Errorf("SQL = %q, want %q", result.SQL, expected)
@@ -294,7 +348,7 @@ func TestRender_SupportsILIKE(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 
-	// MySQL LIKE is case-insensitive by default
+	// MariaDB LIKE is case-insensitive by default
 	expected := "SELECT `id` FROM `users` WHERE `name` LIKE :pattern"
 	if result.SQL != expected {
 		t.Errorf("SQL = %q, want %q", result.SQL, expected)
@@ -354,7 +408,7 @@ func TestRender_StringConcat(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 
-	// MySQL uses CONCAT()
+	// MariaDB uses CONCAT()
 	expected := "SELECT CONCAT(`first_name`, `last_name`) AS `full_name` FROM `users`"
 	if result.SQL != expected {
 		t.Errorf("SQL = %q, want %q", result.SQL, expected)
@@ -407,7 +461,7 @@ func TestRender_DateCurrentDate(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 
-	// MySQL uses CURDATE()
+	// MariaDB uses CURDATE()
 	expected := "SELECT CURDATE() AS `today` FROM `users`"
 	if result.SQL != expected {
 		t.Errorf("SQL = %q, want %q", result.SQL, expected)
@@ -466,7 +520,7 @@ func TestRender_DateTruncMonth(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 
-	// MySQL uses DATE_FORMAT for month truncation
+	// MariaDB uses DATE_FORMAT for month truncation
 	expected := "SELECT DATE_FORMAT(`created_at`, '%Y-%m-01') AS `month_start` FROM `users`"
 	if result.SQL != expected {
 		t.Errorf("SQL = %q, want %q", result.SQL, expected)

@@ -177,6 +177,7 @@ func cleanupMSSQLData(ctx context.Context, t *testing.T, mc *MSSQLContainer) {
 // convertMSSQLParams converts astql named parameters to SQL Server positional parameters.
 // SQL Server go driver uses @p1, @p2, etc. for positional params.
 // Parameters are extracted in the order they appear in the SQL string.
+// astql uses : prefix for named params (sqlx converts : to @ for MSSQL).
 func convertMSSQLParams(sqlStr string, params map[string]any) (string, []any) {
 	args := make([]any, 0)
 	result := strings.Builder{}
@@ -184,7 +185,7 @@ func convertMSSQLParams(sqlStr string, params map[string]any) (string, []any) {
 
 	i := 0
 	for i < len(sqlStr) {
-		if sqlStr[i] == '@' {
+		if sqlStr[i] == ':' {
 			// Find end of parameter name
 			j := i + 1
 			for j < len(sqlStr) && (isAlphaNumericMSSQL(sqlStr[j]) || sqlStr[j] == '_') {

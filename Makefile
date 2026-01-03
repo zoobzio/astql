@@ -74,7 +74,7 @@ coverage:
 coverage-all:
 	@echo "Generating full coverage report (including integration tests)..."
 	@go test -coverprofile=coverage.out \
-		-coverpkg=github.com/zoobzio/astql,github.com/zoobzio/astql/pkg/postgres,github.com/zoobzio/astql/pkg/mysql,github.com/zoobzio/astql/pkg/mssql,github.com/zoobzio/astql/pkg/sqlite \
+		-coverpkg=github.com/zoobzio/astql,github.com/zoobzio/astql/pkg/postgres,github.com/zoobzio/astql/pkg/mariadb,github.com/zoobzio/astql/pkg/mssql,github.com/zoobzio/astql/pkg/sqlite \
 		./...
 	@go tool cover -html=coverage.out -o coverage.html
 	@go tool cover -func=coverage.out | tail -1

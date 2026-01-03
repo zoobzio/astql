@@ -94,13 +94,13 @@ Same AST, different dialects:
 import (
     "github.com/zoobzio/astql/pkg/postgres"
     "github.com/zoobzio/astql/pkg/sqlite"
-    "github.com/zoobzio/astql/pkg/mysql"
+    "github.com/zoobzio/astql/pkg/mariadb"
     "github.com/zoobzio/astql/pkg/mssql"
 )
 
 result, _ := query.Render(postgres.New())  // PostgreSQL
 result, _ := query.Render(sqlite.New())    // SQLite
-result, _ := query.Render(mysql.New())     // MySQL
+result, _ := query.Render(mariadb.New())   // MariaDB
 result, _ := query.Render(mssql.New())     // SQL Server
 ```
 

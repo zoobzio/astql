@@ -7,21 +7,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/testcontainers/testcontainers-go/modules/mysql"
+	"github.com/testcontainers/testcontainers-go/modules/mariadb"
 	"github.com/zoobzio/astql"
-	astqlmysql "github.com/zoobzio/astql/pkg/mysql"
+	astqlmariadb "github.com/zoobzio/astql/pkg/mariadb"
 	"github.com/zoobzio/dbml"
 )
 
-// MySQLContainer wraps a testcontainers MySQL instance.
-type MySQLContainer struct {
-	container *mysql.MySQLContainer
+// MariaDBContainer wraps a testcontainers MariaDB instance.
+type MariaDBContainer struct {
+	container *mariadb.MariaDBContainer
 	db        *sql.DB
 	connStr   string
 }
 
 // Exec executes a SQL statement.
-func (mc *MySQLContainer) Exec(ctx context.Context, t *testing.T, sql string, args ...any) {
+func (mc *MariaDBContainer) Exec(ctx context.Context, t *testing.T, sql string, args ...any) {
 	t.Helper()
 	_, err := mc.db.ExecContext(ctx, sql, args...)
 	if err != nil {
@@ -30,13 +30,13 @@ func (mc *MySQLContainer) Exec(ctx context.Context, t *testing.T, sql string, ar
 }
 
 // QueryRow executes a query and returns a single row.
-func (mc *MySQLContainer) QueryRow(ctx context.Context, t *testing.T, sql string, args ...any) *sql.Row {
+func (mc *MariaDBContainer) QueryRow(ctx context.Context, t *testing.T, sql string, args ...any) *sql.Row {
 	t.Helper()
 	return mc.db.QueryRowContext(ctx, sql, args...)
 }
 
 // Query executes a query and returns rows.
-func (mc *MySQLContainer) Query(ctx context.Context, t *testing.T, sql string, args ...any) *sql.Rows {
+func (mc *MariaDBContainer) Query(ctx context.Context, t *testing.T, sql string, args ...any) *sql.Rows {
 	t.Helper()
 	rows, err := mc.db.QueryContext(ctx, sql, args...)
 	if err != nil {
@@ -45,8 +45,8 @@ func (mc *MySQLContainer) Query(ctx context.Context, t *testing.T, sql string, a
 	return rows
 }
 
-// createMySQLTestInstance creates an ASTQL instance matching the test database schema.
-func createMySQLTestInstance(t *testing.T) *astql.ASTQL {
+// createMariaDBTestInstance creates an ASTQL instance matching the test database schema.
+func createMariaDBTestInstance(t *testing.T) *astql.ASTQL {
 	t.Helper()
 
 	project := dbml.NewProject("test")
@@ -81,8 +81,8 @@ func createMySQLTestInstance(t *testing.T) *astql.ASTQL {
 	return instance
 }
 
-// setupMySQLSchema creates the test database schema.
-func setupMySQLSchema(ctx context.Context, t *testing.T, mc *MySQLContainer) {
+// setupMariaDBSchema creates the test database schema.
+func setupMariaDBSchema(ctx context.Context, t *testing.T, mc *MariaDBContainer) {
 	t.Helper()
 
 	mc.Exec(ctx, t, `
@@ -117,8 +117,8 @@ func setupMySQLSchema(ctx context.Context, t *testing.T, mc *MySQLContainer) {
 	`)
 }
 
-// seedMySQLData inserts test data.
-func seedMySQLData(ctx context.Context, t *testing.T, mc *MySQLContainer) {
+// seedMariaDBData inserts test data.
+func seedMariaDBData(ctx context.Context, t *testing.T, mc *MariaDBContainer) {
 	t.Helper()
 
 	mc.Exec(ctx, t, `
@@ -146,8 +146,8 @@ func seedMySQLData(ctx context.Context, t *testing.T, mc *MySQLContainer) {
 	`)
 }
 
-// cleanupMySQLData removes all test data to ensure test isolation.
-func cleanupMySQLData(ctx context.Context, t *testing.T, mc *MySQLContainer) {
+// cleanupMariaDBData removes all test data to ensure test isolation.
+func cleanupMariaDBData(ctx context.Context, t *testing.T, mc *MariaDBContainer) {
 	t.Helper()
 	mc.Exec(ctx, t, `SET FOREIGN_KEY_CHECKS = 0`)
 	mc.Exec(ctx, t, `TRUNCATE TABLE orders`)
@@ -156,9 +156,9 @@ func cleanupMySQLData(ctx context.Context, t *testing.T, mc *MySQLContainer) {
 	mc.Exec(ctx, t, `SET FOREIGN_KEY_CHECKS = 1`)
 }
 
-// convertMySQLParams converts astql named parameters to MySQL positional parameters.
+// convertMariaDBParams converts astql named parameters to MariaDB positional parameters.
 // Parameters are extracted in the order they appear in the SQL string.
-func convertMySQLParams(sqlStr string, params map[string]any) (string, []any) {
+func convertMariaDBParams(sqlStr string, params map[string]any) (string, []any) {
 	args := make([]any, 0)
 	result := strings.Builder{}
 
@@ -191,21 +191,21 @@ func isAlphaNumeric(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }
 
-// TestMySQLIntegration_BasicSelect tests basic SELECT queries against MySQL.
-func TestMySQLIntegration_BasicSelect(t *testing.T) {
+// TestMariaDBIntegration_BasicSelect tests basic SELECT queries against MariaDB.
+func TestMariaDBIntegration_BasicSelect(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
 	ctx := context.Background()
-	mc := getMySQLContainer(t)
+	mc := getMariaDBContainer(t)
 
-	setupMySQLSchema(ctx, t, mc)
-	seedMySQLData(ctx, t, mc)
-	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
+	setupMariaDBSchema(ctx, t, mc)
+	seedMariaDBData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMariaDBData(ctx, t, mc) })
 
-	instance := createMySQLTestInstance(t)
-	renderer := astqlmysql.New()
+	instance := createMariaDBTestInstance(t)
+	renderer := astqlmariadb.New()
 
 	result, err := astql.Select(instance.T("users")).Render(renderer)
 	if err != nil {
@@ -224,21 +224,21 @@ func TestMySQLIntegration_BasicSelect(t *testing.T) {
 	}
 }
 
-// TestMySQLIntegration_SelectWithWhere tests WHERE clause against MySQL.
-func TestMySQLIntegration_SelectWithWhere(t *testing.T) {
+// TestMariaDBIntegration_SelectWithWhere tests WHERE clause against MariaDB.
+func TestMariaDBIntegration_SelectWithWhere(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
 	ctx := context.Background()
-	mc := getMySQLContainer(t)
+	mc := getMariaDBContainer(t)
 
-	setupMySQLSchema(ctx, t, mc)
-	seedMySQLData(ctx, t, mc)
-	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
+	setupMariaDBSchema(ctx, t, mc)
+	seedMariaDBData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMariaDBData(ctx, t, mc) })
 
-	instance := createMySQLTestInstance(t)
-	renderer := astqlmysql.New()
+	instance := createMariaDBTestInstance(t)
+	renderer := astqlmariadb.New()
 
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username")).
@@ -248,7 +248,7 @@ func TestMySQLIntegration_SelectWithWhere(t *testing.T) {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	sql, args := convertMySQLParams(result.SQL, map[string]any{"is_active": true})
+	sql, args := convertMariaDBParams(result.SQL, map[string]any{"is_active": true})
 	rows := mc.Query(ctx, t, sql, args...)
 	defer rows.Close()
 
@@ -266,20 +266,20 @@ func TestMySQLIntegration_SelectWithWhere(t *testing.T) {
 	}
 }
 
-// TestMySQLIntegration_Insert tests INSERT operations against MySQL.
-func TestMySQLIntegration_Insert(t *testing.T) {
+// TestMariaDBIntegration_Insert tests INSERT operations against MariaDB.
+func TestMariaDBIntegration_Insert(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
 	ctx := context.Background()
-	mc := getMySQLContainer(t)
+	mc := getMariaDBContainer(t)
 
-	setupMySQLSchema(ctx, t, mc)
-	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
+	setupMariaDBSchema(ctx, t, mc)
+	t.Cleanup(func() { cleanupMariaDBData(ctx, t, mc) })
 
-	instance := createMySQLTestInstance(t)
-	renderer := astqlmysql.New()
+	instance := createMariaDBTestInstance(t)
+	renderer := astqlmariadb.New()
 
 	vm := instance.ValueMap()
 	vm[instance.F("username")] = instance.P("username")
@@ -293,7 +293,7 @@ func TestMySQLIntegration_Insert(t *testing.T) {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	sql, args := convertMySQLParams(result.SQL, map[string]any{
+	sql, args := convertMariaDBParams(result.SQL, map[string]any{
 		"username": "newuser",
 		"email":    "newuser@example.com",
 		"age":      42,
@@ -312,21 +312,21 @@ func TestMySQLIntegration_Insert(t *testing.T) {
 	}
 }
 
-// TestMySQLIntegration_OnDuplicateKeyUpdate tests upsert against MySQL.
-func TestMySQLIntegration_OnDuplicateKeyUpdate(t *testing.T) {
+// TestMariaDBIntegration_OnDuplicateKeyUpdate tests upsert against MariaDB.
+func TestMariaDBIntegration_OnDuplicateKeyUpdate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
 	ctx := context.Background()
-	mc := getMySQLContainer(t)
+	mc := getMariaDBContainer(t)
 
-	setupMySQLSchema(ctx, t, mc)
-	seedMySQLData(ctx, t, mc)
-	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
+	setupMariaDBSchema(ctx, t, mc)
+	seedMariaDBData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMariaDBData(ctx, t, mc) })
 
-	instance := createMySQLTestInstance(t)
-	renderer := astqlmysql.New()
+	instance := createMariaDBTestInstance(t)
+	renderer := astqlmariadb.New()
 
 	vm := instance.ValueMap()
 	vm[instance.F("username")] = instance.P("username")
@@ -345,7 +345,7 @@ func TestMySQLIntegration_OnDuplicateKeyUpdate(t *testing.T) {
 	}
 
 	// Try to insert with existing email, should update age
-	sql, args := convertMySQLParams(result.SQL, map[string]any{
+	sql, args := convertMariaDBParams(result.SQL, map[string]any{
 		"username": "alice_dup",
 		"email":    "alice@example.com", // existing email
 		"age":      99,
@@ -365,21 +365,21 @@ func TestMySQLIntegration_OnDuplicateKeyUpdate(t *testing.T) {
 	}
 }
 
-// TestMySQLIntegration_Update tests UPDATE operations against MySQL.
-func TestMySQLIntegration_Update(t *testing.T) {
+// TestMariaDBIntegration_Update tests UPDATE operations against MariaDB.
+func TestMariaDBIntegration_Update(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
 	ctx := context.Background()
-	mc := getMySQLContainer(t)
+	mc := getMariaDBContainer(t)
 
-	setupMySQLSchema(ctx, t, mc)
-	seedMySQLData(ctx, t, mc)
-	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
+	setupMariaDBSchema(ctx, t, mc)
+	seedMariaDBData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMariaDBData(ctx, t, mc) })
 
-	instance := createMySQLTestInstance(t)
-	renderer := astqlmysql.New()
+	instance := createMariaDBTestInstance(t)
+	renderer := astqlmariadb.New()
 
 	result, err := astql.Update(instance.T("users")).
 		Set(instance.F("age"), instance.P("new_age")).
@@ -389,7 +389,7 @@ func TestMySQLIntegration_Update(t *testing.T) {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	sql, args := convertMySQLParams(result.SQL, map[string]any{
+	sql, args := convertMariaDBParams(result.SQL, map[string]any{
 		"new_age":  99,
 		"username": "alice",
 	})
@@ -407,21 +407,21 @@ func TestMySQLIntegration_Update(t *testing.T) {
 	}
 }
 
-// TestMySQLIntegration_Delete tests DELETE operations against MySQL.
-func TestMySQLIntegration_Delete(t *testing.T) {
+// TestMariaDBIntegration_Delete tests DELETE operations against MariaDB.
+func TestMariaDBIntegration_Delete(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
 	ctx := context.Background()
-	mc := getMySQLContainer(t)
+	mc := getMariaDBContainer(t)
 
-	setupMySQLSchema(ctx, t, mc)
-	seedMySQLData(ctx, t, mc)
-	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
+	setupMariaDBSchema(ctx, t, mc)
+	seedMariaDBData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMariaDBData(ctx, t, mc) })
 
-	instance := createMySQLTestInstance(t)
-	renderer := astqlmysql.New()
+	instance := createMariaDBTestInstance(t)
+	renderer := astqlmariadb.New()
 
 	result, err := astql.Delete(instance.T("users")).
 		Where(instance.C(instance.F("active"), astql.EQ, instance.P("is_active"))).
@@ -430,7 +430,7 @@ func TestMySQLIntegration_Delete(t *testing.T) {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	sql, args := convertMySQLParams(result.SQL, map[string]any{"is_active": false})
+	sql, args := convertMariaDBParams(result.SQL, map[string]any{"is_active": false})
 	mc.Exec(ctx, t, sql, args...)
 
 	// Verify deletion
@@ -444,21 +444,21 @@ func TestMySQLIntegration_Delete(t *testing.T) {
 	}
 }
 
-// TestMySQLIntegration_Join tests JOIN operations against MySQL.
-func TestMySQLIntegration_Join(t *testing.T) {
+// TestMariaDBIntegration_Join tests JOIN operations against MariaDB.
+func TestMariaDBIntegration_Join(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
 	ctx := context.Background()
-	mc := getMySQLContainer(t)
+	mc := getMariaDBContainer(t)
 
-	setupMySQLSchema(ctx, t, mc)
-	seedMySQLData(ctx, t, mc)
-	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
+	setupMariaDBSchema(ctx, t, mc)
+	seedMariaDBData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMariaDBData(ctx, t, mc) })
 
-	instance := createMySQLTestInstance(t)
-	renderer := astqlmysql.New()
+	instance := createMariaDBTestInstance(t)
+	renderer := astqlmariadb.New()
 
 	result, err := astql.Select(instance.T("users", "u")).
 		Fields(
@@ -483,7 +483,7 @@ func TestMySQLIntegration_Join(t *testing.T) {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	sql, args := convertMySQLParams(result.SQL, map[string]any{"is_published": true})
+	sql, args := convertMariaDBParams(result.SQL, map[string]any{"is_published": true})
 	rows := mc.Query(ctx, t, sql, args...)
 	defer rows.Close()
 
@@ -496,21 +496,21 @@ func TestMySQLIntegration_Join(t *testing.T) {
 	}
 }
 
-// TestMySQLIntegration_Aggregates tests aggregate functions against MySQL.
-func TestMySQLIntegration_Aggregates(t *testing.T) {
+// TestMariaDBIntegration_Aggregates tests aggregate functions against MariaDB.
+func TestMariaDBIntegration_Aggregates(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
 	ctx := context.Background()
-	mc := getMySQLContainer(t)
+	mc := getMariaDBContainer(t)
 
-	setupMySQLSchema(ctx, t, mc)
-	seedMySQLData(ctx, t, mc)
-	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
+	setupMariaDBSchema(ctx, t, mc)
+	seedMariaDBData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMariaDBData(ctx, t, mc) })
 
-	instance := createMySQLTestInstance(t)
-	renderer := astqlmysql.New()
+	instance := createMariaDBTestInstance(t)
+	renderer := astqlmariadb.New()
 
 	result, err := astql.Select(instance.T("posts")).
 		Fields(instance.F("user_id")).
@@ -522,7 +522,7 @@ func TestMySQLIntegration_Aggregates(t *testing.T) {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	sql, args := convertMySQLParams(result.SQL, map[string]any{"min_count": 1})
+	sql, args := convertMariaDBParams(result.SQL, map[string]any{"min_count": 1})
 	rows := mc.Query(ctx, t, sql, args...)
 	defer rows.Close()
 
@@ -536,21 +536,21 @@ func TestMySQLIntegration_Aggregates(t *testing.T) {
 	}
 }
 
-// TestMySQLIntegration_OrderByLimit tests ORDER BY and LIMIT against MySQL.
-func TestMySQLIntegration_OrderByLimit(t *testing.T) {
+// TestMariaDBIntegration_OrderByLimit tests ORDER BY and LIMIT against MariaDB.
+func TestMariaDBIntegration_OrderByLimit(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
 	ctx := context.Background()
-	mc := getMySQLContainer(t)
+	mc := getMariaDBContainer(t)
 
-	setupMySQLSchema(ctx, t, mc)
-	seedMySQLData(ctx, t, mc)
-	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
+	setupMariaDBSchema(ctx, t, mc)
+	seedMariaDBData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMariaDBData(ctx, t, mc) })
 
-	instance := createMySQLTestInstance(t)
-	renderer := astqlmysql.New()
+	instance := createMariaDBTestInstance(t)
+	renderer := astqlmariadb.New()
 
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username"), instance.F("age")).
@@ -582,21 +582,21 @@ func TestMySQLIntegration_OrderByLimit(t *testing.T) {
 	}
 }
 
-// TestMySQLIntegration_ForUpdate tests row locking against MySQL.
-func TestMySQLIntegration_ForUpdate(t *testing.T) {
+// TestMariaDBIntegration_ForUpdate tests row locking against MariaDB.
+func TestMariaDBIntegration_ForUpdate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
 	ctx := context.Background()
-	mc := getMySQLContainer(t)
+	mc := getMariaDBContainer(t)
 
-	setupMySQLSchema(ctx, t, mc)
-	seedMySQLData(ctx, t, mc)
-	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
+	setupMariaDBSchema(ctx, t, mc)
+	seedMariaDBData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMariaDBData(ctx, t, mc) })
 
-	instance := createMySQLTestInstance(t)
-	renderer := astqlmysql.New()
+	instance := createMariaDBTestInstance(t)
+	renderer := astqlmariadb.New()
 
 	// Start a transaction
 	tx, err := mc.db.BeginTx(ctx, nil)
@@ -614,7 +614,7 @@ func TestMySQLIntegration_ForUpdate(t *testing.T) {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	sql, args := convertMySQLParams(result.SQL, map[string]any{"user_id": 1})
+	sql, args := convertMariaDBParams(result.SQL, map[string]any{"user_id": 1})
 
 	var username string
 	err = tx.QueryRowContext(ctx, sql, args...).Scan(&username)
@@ -627,21 +627,21 @@ func TestMySQLIntegration_ForUpdate(t *testing.T) {
 	}
 }
 
-// TestMySQLIntegration_WindowFunction tests window functions against MySQL.
-func TestMySQLIntegration_WindowFunction(t *testing.T) {
+// TestMariaDBIntegration_WindowFunction tests window functions against MariaDB.
+func TestMariaDBIntegration_WindowFunction(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
 	ctx := context.Background()
-	mc := getMySQLContainer(t)
+	mc := getMariaDBContainer(t)
 
-	setupMySQLSchema(ctx, t, mc)
-	seedMySQLData(ctx, t, mc)
-	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
+	setupMariaDBSchema(ctx, t, mc)
+	seedMariaDBData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMariaDBData(ctx, t, mc) })
 
-	instance := createMySQLTestInstance(t)
-	renderer := astqlmysql.New()
+	instance := createMariaDBTestInstance(t)
+	renderer := astqlmariadb.New()
 
 	winExpr := astql.RowNumber().
 		OrderBy(instance.F("age"), astql.DESC).
@@ -678,21 +678,21 @@ func TestMySQLIntegration_WindowFunction(t *testing.T) {
 	}
 }
 
-// TestMySQLIntegration_CaseExpression tests CASE expressions against MySQL.
-func TestMySQLIntegration_CaseExpression(t *testing.T) {
+// TestMariaDBIntegration_CaseExpression tests CASE expressions against MariaDB.
+func TestMariaDBIntegration_CaseExpression(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
 	ctx := context.Background()
-	mc := getMySQLContainer(t)
+	mc := getMariaDBContainer(t)
 
-	setupMySQLSchema(ctx, t, mc)
-	seedMySQLData(ctx, t, mc)
-	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
+	setupMariaDBSchema(ctx, t, mc)
+	seedMariaDBData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMariaDBData(ctx, t, mc) })
 
-	instance := createMySQLTestInstance(t)
-	renderer := astqlmysql.New()
+	instance := createMariaDBTestInstance(t)
+	renderer := astqlmariadb.New()
 
 	caseExpr := astql.Case().
 		When(instance.C(instance.F("age"), astql.LT, instance.P("young_age")), instance.P("young_label")).
@@ -709,7 +709,7 @@ func TestMySQLIntegration_CaseExpression(t *testing.T) {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	sql, args := convertMySQLParams(result.SQL, map[string]any{
+	sql, args := convertMariaDBParams(result.SQL, map[string]any{
 		"young_age":    27,
 		"young_label":  "young",
 		"mid_age":      32,
@@ -743,21 +743,21 @@ func TestMySQLIntegration_CaseExpression(t *testing.T) {
 	}
 }
 
-// TestMySQLIntegration_Between tests BETWEEN condition against MySQL.
-func TestMySQLIntegration_Between(t *testing.T) {
+// TestMariaDBIntegration_Between tests BETWEEN condition against MariaDB.
+func TestMariaDBIntegration_Between(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
 	ctx := context.Background()
-	mc := getMySQLContainer(t)
+	mc := getMariaDBContainer(t)
 
-	setupMySQLSchema(ctx, t, mc)
-	seedMySQLData(ctx, t, mc)
-	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
+	setupMariaDBSchema(ctx, t, mc)
+	seedMariaDBData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMariaDBData(ctx, t, mc) })
 
-	instance := createMySQLTestInstance(t)
-	renderer := astqlmysql.New()
+	instance := createMariaDBTestInstance(t)
+	renderer := astqlmariadb.New()
 
 	result, err := astql.Select(instance.T("users")).
 		Fields(instance.F("username")).
@@ -768,7 +768,7 @@ func TestMySQLIntegration_Between(t *testing.T) {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	sql, args := convertMySQLParams(result.SQL, map[string]any{
+	sql, args := convertMariaDBParams(result.SQL, map[string]any{
 		"min_age": 25,
 		"max_age": 30,
 	})
@@ -790,20 +790,20 @@ func TestMySQLIntegration_Between(t *testing.T) {
 	}
 }
 
-// TestMySQLIntegration_DateNow tests NOW() function against MySQL.
-func TestMySQLIntegration_DateNow(t *testing.T) {
+// TestMariaDBIntegration_DateNow tests NOW() function against MariaDB.
+func TestMariaDBIntegration_DateNow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
 	ctx := context.Background()
-	mc := getMySQLContainer(t)
+	mc := getMariaDBContainer(t)
 
-	setupMySQLSchema(ctx, t, mc)
-	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
+	setupMariaDBSchema(ctx, t, mc)
+	t.Cleanup(func() { cleanupMariaDBData(ctx, t, mc) })
 
-	instance := createMySQLTestInstance(t)
-	renderer := astqlmysql.New()
+	instance := createMariaDBTestInstance(t)
+	renderer := astqlmariadb.New()
 
 	result, err := astql.Select(instance.T("users")).
 		SelectExpr(astql.As(astql.Now(), "current_time")).
@@ -824,21 +824,21 @@ func TestMySQLIntegration_DateNow(t *testing.T) {
 	}
 }
 
-// TestMySQLIntegration_Union tests UNION operations against MySQL.
-func TestMySQLIntegration_Union(t *testing.T) {
+// TestMariaDBIntegration_Union tests UNION operations against MariaDB.
+func TestMariaDBIntegration_Union(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
 	ctx := context.Background()
-	mc := getMySQLContainer(t)
+	mc := getMariaDBContainer(t)
 
-	setupMySQLSchema(ctx, t, mc)
-	seedMySQLData(ctx, t, mc)
-	t.Cleanup(func() { cleanupMySQLData(ctx, t, mc) })
+	setupMariaDBSchema(ctx, t, mc)
+	seedMariaDBData(ctx, t, mc)
+	t.Cleanup(func() { cleanupMariaDBData(ctx, t, mc) })
 
-	instance := createMySQLTestInstance(t)
-	renderer := astqlmysql.New()
+	instance := createMariaDBTestInstance(t)
+	renderer := astqlmariadb.New()
 
 	query1 := astql.Select(instance.T("users")).
 		Fields(instance.F("username")).
@@ -857,7 +857,7 @@ func TestMySQLIntegration_Union(t *testing.T) {
 		"q0_min_age":   30,
 		"q1_is_active": false,
 	}
-	sql, args := convertMySQLParams(result.SQL, params)
+	sql, args := convertMariaDBParams(result.SQL, params)
 
 	rows := mc.Query(ctx, t, sql, args...)
 	defer rows.Close()

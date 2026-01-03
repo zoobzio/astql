@@ -14,27 +14,27 @@ import (
 	"github.com/jackc/pgx/v5"
 	_ "github.com/microsoft/go-mssqldb"
 	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/mariadb"
 	"github.com/testcontainers/testcontainers-go/modules/mssql"
-	"github.com/testcontainers/testcontainers-go/modules/mysql"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 // Shared containers - lazily initialized
 var (
-	sharedPgContainer    *PostgresContainer
-	sharedMySQLContainer *MySQLContainer
-	sharedMSSQLContainer *MSSQLContainer
+	sharedPgContainer      *PostgresContainer
+	sharedMariaDBContainer *MariaDBContainer
+	sharedMSSQLContainer   *MSSQLContainer
 
-	pgOnce    sync.Once
-	mysqlOnce sync.Once
-	mssqlOnce sync.Once
+	pgOnce      sync.Once
+	mariadbOnce sync.Once
+	mssqlOnce   sync.Once
 
 	// Track which containers were started for cleanup
 	containersStarted = struct {
-		pg    bool
-		mysql bool
-		mssql bool
+		pg      bool
+		mariadb bool
+		mssql   bool
 	}{}
 )
 
@@ -58,12 +58,12 @@ func TestMain(m *testing.M) {
 		}
 	}
 
-	if containersStarted.mysql && sharedMySQLContainer != nil {
-		if sharedMySQLContainer.db != nil {
-			_ = sharedMySQLContainer.db.Close()
+	if containersStarted.mariadb && sharedMariaDBContainer != nil {
+		if sharedMariaDBContainer.db != nil {
+			_ = sharedMariaDBContainer.db.Close()
 		}
-		if sharedMySQLContainer.container != nil {
-			_ = sharedMySQLContainer.container.Terminate(ctx)
+		if sharedMariaDBContainer.container != nil {
+			_ = sharedMariaDBContainer.container.Terminate(ctx)
 		}
 	}
 
@@ -122,25 +122,25 @@ func getPostgresContainer(t *testing.T) *PostgresContainer {
 	return sharedPgContainer
 }
 
-// getMySQLContainer returns the shared MySQL container, starting it if needed.
-func getMySQLContainer(t *testing.T) *MySQLContainer {
+// getMariaDBContainer returns the shared MariaDB container, starting it if needed.
+func getMariaDBContainer(t *testing.T) *MariaDBContainer {
 	t.Helper()
 
-	mysqlOnce.Do(func() {
+	mariadbOnce.Do(func() {
 		ctx := context.Background()
 
-		container, err := mysql.Run(ctx,
-			"docker.io/mysql:8.0",
-			mysql.WithDatabase("astql_test"),
-			mysql.WithUsername("test"),
-			mysql.WithPassword("test"),
+		container, err := mariadb.Run(ctx,
+			"docker.io/mariadb:11",
+			mariadb.WithDatabase("astql_test"),
+			mariadb.WithUsername("test"),
+			mariadb.WithPassword("test"),
 			testcontainers.WithWaitStrategy(
-				wait.ForLog("port: 3306  MySQL Community Server").
+				wait.ForLog("mariadbd: ready for connections").
 					WithStartupTimeout(60*time.Second),
 			),
 		)
 		if err != nil {
-			log.Fatalf("Failed to start mysql container: %v", err)
+			log.Fatalf("Failed to start mariadb container: %v", err)
 		}
 
 		connStr, err := container.ConnectionString(ctx)
@@ -150,7 +150,7 @@ func getMySQLContainer(t *testing.T) *MySQLContainer {
 
 		db, err := sql.Open("mysql", connStr)
 		if err != nil {
-			log.Fatalf("Failed to connect to mysql: %v", err)
+			log.Fatalf("Failed to connect to mariadb: %v", err)
 		}
 
 		// Wait for connection to be ready
@@ -161,15 +161,15 @@ func getMySQLContainer(t *testing.T) *MySQLContainer {
 			time.Sleep(time.Second)
 		}
 
-		sharedMySQLContainer = &MySQLContainer{
+		sharedMariaDBContainer = &MariaDBContainer{
 			container: container,
 			db:        db,
 			connStr:   connStr,
 		}
-		containersStarted.mysql = true
+		containersStarted.mariadb = true
 	})
 
-	return sharedMySQLContainer
+	return sharedMariaDBContainer
 }
 
 // getMSSQLContainer returns the shared MSSQL container, starting it if needed.
