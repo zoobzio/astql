@@ -13,7 +13,9 @@ const (
 type Capabilities struct {
 	DistinctOn          bool            // DISTINCT ON (field, ...)
 	Upsert              bool            // ON CONFLICT / ON DUPLICATE KEY
-	Returning           bool            // RETURNING clause
+	ReturningOnInsert   bool            // RETURNING after INSERT
+	ReturningOnUpdate   bool            // RETURNING after UPDATE
+	ReturningOnDelete   bool            // RETURNING after DELETE
 	CaseInsensitiveLike bool            // ILIKE operator
 	RegexOperators      bool            // ~, ~*, !~, !~*
 	ArrayOperators      bool            // @>, <@, &&

@@ -1215,7 +1215,9 @@ func (r *Renderer) Capabilities() render.Capabilities {
 	return render.Capabilities{
 		DistinctOn:          false,
 		Upsert:              true,
-		Returning:           true,
+		ReturningOnInsert:   true,
+		ReturningOnUpdate:   false, // Not supported (MDEV-5092)
+		ReturningOnDelete:   true,
 		CaseInsensitiveLike: true, // LIKE is case-insensitive by default
 		RegexOperators:      false,
 		ArrayOperators:      false,

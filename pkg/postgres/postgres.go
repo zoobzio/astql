@@ -1181,7 +1181,9 @@ func (r *Renderer) Capabilities() render.Capabilities {
 	return render.Capabilities{
 		DistinctOn:          true,
 		Upsert:              true,
-		Returning:           true,
+		ReturningOnInsert:   true,
+		ReturningOnUpdate:   true,
+		ReturningOnDelete:   true,
 		CaseInsensitiveLike: true,
 		RegexOperators:      true,
 		ArrayOperators:      true,

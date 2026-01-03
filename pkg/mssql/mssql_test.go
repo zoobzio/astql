@@ -1151,8 +1151,14 @@ func TestCapabilities(t *testing.T) {
 	if caps.Upsert {
 		t.Error("Upsert should be false")
 	}
-	if caps.Returning {
-		t.Error("Returning should be false")
+	if caps.ReturningOnInsert {
+		t.Error("ReturningOnInsert should be false")
+	}
+	if caps.ReturningOnUpdate {
+		t.Error("ReturningOnUpdate should be false")
+	}
+	if caps.ReturningOnDelete {
+		t.Error("ReturningOnDelete should be false")
 	}
 	if caps.CaseInsensitiveLike {
 		t.Error("CaseInsensitiveLike should be false")
