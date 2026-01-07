@@ -1,4 +1,6 @@
-.PHONY: test test-race test-integration bench lint lint-fix coverage coverage-all clean install-tools install-hooks all help check ci
+.PHONY: test test-unit test-race test-integration test-bench bench lint lint-fix coverage coverage-all clean install-tools install-hooks all help check ci
+
+.DEFAULT_GOAL := help
 
 # Default target
 all: test lint
@@ -10,9 +12,11 @@ help:
 	@echo ""
 	@echo "Testing & Quality:"
 	@echo "  make test             - Run unit tests (fast)"
+	@echo "  make test-unit        - Run unit tests (alias for test)"
 	@echo "  make test-race        - Run unit tests with race detector"
 	@echo "  make test-integration - Run integration tests (requires Docker)"
 	@echo "  make test-all         - Run all tests including integration"
+	@echo "  make test-bench       - Run benchmarks (alias for bench)"
 	@echo "  make bench            - Run benchmarks"
 	@echo "  make lint             - Run golangci-lint"
 	@echo "  make lint-fix         - Run golangci-lint with auto-fix"
@@ -31,6 +35,9 @@ help:
 test:
 	@echo "Running unit tests..."
 	@go test -v -short ./...
+
+# Alias for test (checklist compliance)
+test-unit: test
 
 # Run unit tests with race detector
 test-race:
@@ -51,6 +58,9 @@ test-all:
 bench:
 	@echo "Running benchmarks..."
 	@go test -bench=. -benchmem -benchtime=1s -short ./...
+
+# Alias for bench (checklist compliance)
+test-bench: bench
 
 # Run linters
 lint:

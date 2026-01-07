@@ -13,22 +13,24 @@ Type-safe SQL query builder with DBML schema validation.
 
 Build queries as an AST, validate against your schema, render to parameterized SQL.
 
-## Build, Validate, Render
+## Queries That Know Their Shape
 
 ```go
-// Build
+instance.T("users")      // ✓ exists in schema
+instance.T("uusers")     // panic: table "uusers" not found
+
+instance.F("email")      // ✓ exists in schema
+instance.F("emial")      // panic: field "emial" not found
+
 query := astql.Select(instance.T("users")).
     Fields(instance.F("username"), instance.F("email")).
     Where(instance.C(instance.F("active"), astql.EQ, instance.P("is_active")))
 
-// Validate — T(), F(), P() check against your DBML schema
-
-// Render
 result, _ := query.Render(postgres.New())
 // SELECT "username", "email" FROM "users" WHERE "active" = :is_active
 ```
 
-Tables and fields validated at construction. Values always parameterized. Identifiers quoted per dialect. Use `TryT`, `TryF`, `TryP` for runtime validation with error returns.
+Typos become compile-time failures, not runtime surprises. Values are parameterized. Identifiers are quoted. The schema is the source of truth.
 
 ## Install
 
@@ -86,9 +88,7 @@ func main() {
 }
 ```
 
-## Providers
-
-Same AST, different dialects:
+## One Query, Four Dialects
 
 ```go
 import (
@@ -98,13 +98,13 @@ import (
     "github.com/zoobzio/astql/pkg/mssql"
 )
 
-result, _ := query.Render(postgres.New())  // PostgreSQL
-result, _ := query.Render(sqlite.New())    // SQLite
-result, _ := query.Render(mariadb.New())   // MariaDB
-result, _ := query.Render(mssql.New())     // SQL Server
+result, _ := query.Render(postgres.New())  // "username", LIMIT 10
+result, _ := query.Render(sqlite.New())    // "username", LIMIT 10
+result, _ := query.Render(mariadb.New())   // `username`, LIMIT 10
+result, _ := query.Render(mssql.New())     // [username], TOP 10
 ```
 
-Each provider handles dialect differences — identifier quoting, pagination syntax, date functions, vendor-specific operators.
+Same AST. Different SQL. Each renderer handles dialect differences — identifier quoting, pagination syntax, vendor-specific operators.
 
 ## Why ASTQL?
 
@@ -112,6 +112,34 @@ Each provider handles dialect differences — identifier quoting, pagination syn
 - **Injection-resistant** — parameterized values, quoted identifiers, no string concatenation
 - **Multi-dialect** — one query, four databases
 - **Composable** — subqueries, JOINs, aggregates, window functions, CASE expressions
+
+## Schema-First Data Access
+
+ASTQL enables a pattern: **define schema once in DBML, generate everything else**.
+
+Your DBML becomes the single source of truth. Downstream tools consume the schema to build:
+
+- **Type-safe repositories** — generated data access layers with [cereal](https://github.com/zoobzio/cereal)
+- **Query builders** — domain-specific methods that can't reference invalid columns
+- **Multi-database applications** — same business logic, swappable storage backends
+
+```go
+// Schema defines what's valid
+project := dbml.ParseFile("schema.dbml")
+instance, _ := astql.NewFromDBML(project)
+
+// Queries are structurally correct by construction
+users := instance.T("users")
+query := astql.Select(users).
+    Fields(instance.F("id"), instance.F("email")).
+    Where(instance.C(instance.F("active"), astql.EQ, instance.P("active")))
+
+// Render to any supported database
+sql, _ := query.Render(postgres.New())  // production
+sql, _ := query.Render(sqlite.New())    // testing
+```
+
+The schema guards the boundary. Queries inside the boundary are safe by construction.
 
 ## Documentation
 
