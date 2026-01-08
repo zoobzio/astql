@@ -32,6 +32,24 @@ result, _ := query.Render(postgres.New())
 
 Typos become compile-time failures, not runtime surprises. Values are parameterized. Identifiers are quoted. The schema is the source of truth.
 
+Same query, different databases:
+
+```go
+import (
+    "github.com/zoobzio/astql/postgres"
+    "github.com/zoobzio/astql/sqlite"
+    "github.com/zoobzio/astql/mariadb"
+    "github.com/zoobzio/astql/mssql"
+)
+
+result, _ := query.Render(postgres.New())  // "username", LIMIT 10
+result, _ := query.Render(sqlite.New())    // "username", LIMIT 10
+result, _ := query.Render(mariadb.New())   // `username`, LIMIT 10
+result, _ := query.Render(mssql.New())     // [username], TOP 10
+```
+
+One AST. Four dialects. Each renderer handles identifier quoting, pagination syntax, vendor-specific operators.
+
 ## Install
 
 ```bash
@@ -88,23 +106,15 @@ func main() {
 }
 ```
 
-## One Query, Four Dialects
+## Capabilities
 
-```go
-import (
-    "github.com/zoobzio/astql/postgres"
-    "github.com/zoobzio/astql/sqlite"
-    "github.com/zoobzio/astql/mariadb"
-    "github.com/zoobzio/astql/mssql"
-)
-
-result, _ := query.Render(postgres.New())  // "username", LIMIT 10
-result, _ := query.Render(sqlite.New())    // "username", LIMIT 10
-result, _ := query.Render(mariadb.New())   // `username`, LIMIT 10
-result, _ := query.Render(mssql.New())     // [username], TOP 10
-```
-
-Same AST. Different SQL. Each renderer handles dialect differences — identifier quoting, pagination syntax, vendor-specific operators.
+| Feature | Description | Docs |
+|---------|-------------|------|
+| Schema Validation | Tables and fields checked against DBML at build time | [Schema Validation](docs/3.guides/1.schema-validation.md) |
+| Multi-Dialect | PostgreSQL, SQLite, MariaDB, MSSQL from one AST | [Architecture](docs/2.learn/3.architecture.md) |
+| Parameterized Values | Injection-resistant queries with named parameters | [Conditions](docs/3.guides/2.conditions.md) |
+| Composable Queries | Subqueries, JOINs, aggregates, window functions | [Joins](docs/3.guides/3.joins.md) |
+| CASE Expressions | Conditional logic within queries | [API](docs/5.reference/1.api.md) |
 
 ## Why ASTQL?
 
@@ -145,33 +155,35 @@ The schema guards the boundary. Queries inside the boundary are safe by construc
 
 - [Overview](docs/1.overview.md) — what astql does and why
 
-**Learn**
+### Learn
+
 - [Quickstart](docs/2.learn/1.quickstart.md) — get started in minutes
 - [Concepts](docs/2.learn/2.concepts.md) — tables, fields, params, conditions, builders
 - [Architecture](docs/2.learn/3.architecture.md) — AST structure, render pipeline, security layers
 
-**Guides**
+### Guides
+
 - [Schema Validation](docs/3.guides/1.schema-validation.md) — DBML integration and validation
 - [Conditions](docs/3.guides/2.conditions.md) — WHERE, AND/OR, subqueries, BETWEEN
 - [Joins](docs/3.guides/3.joins.md) — INNER, LEFT, RIGHT, CROSS joins
 - [Aggregates](docs/3.guides/4.aggregates.md) — GROUP BY, HAVING, window functions
 - [Testing](docs/3.guides/5.testing.md) — testing patterns for query builders
 
-**Cookbook**
+### Cookbook
+
 - [Pagination](docs/4.cookbook/1.pagination.md) — LIMIT/OFFSET and cursor patterns
 - [Vector Search](docs/4.cookbook/2.vector-search.md) — pgvector similarity queries
 - [Upserts](docs/4.cookbook/3.upserts.md) — ON CONFLICT patterns
 - [ORM Foundation](docs/4.cookbook/4.orm-foundation.md) — building type-safe ORMs with cereal
 
-**Reference**
+### Reference
+
 - [API](docs/5.reference/1.api.md) — complete function documentation
 - [Operators](docs/5.reference/2.operators.md) — all comparison and special operators
 
 ## Contributing
 
-Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-For security vulnerabilities, see [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. For security issues, see [SECURITY.md](SECURITY.md).
 
 ## License
 
