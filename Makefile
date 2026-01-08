@@ -47,12 +47,16 @@ test-race:
 # Run integration tests only (requires Docker)
 test-integration:
 	@echo "Running integration tests..."
-	@go test -v ./testing/integration/...
+	@cd testing/integration && go test -v ./...
 
 # Run all tests including integration
 test-all:
 	@echo "Running all tests..."
+	@echo "=== Unit tests ==="
 	@go test -v ./...
+	@echo ""
+	@echo "=== Integration tests ==="
+	@cd testing/integration && go test -v ./...
 
 # Run benchmarks (exclude integration test directory)
 bench:

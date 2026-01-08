@@ -16,6 +16,9 @@ coverage.html
 # Go modules
 vendor/
 
+# Go workspace (sum file is local)
+go.work.sum
+
 # IDE specific files
 .idea/
 .vscode/
