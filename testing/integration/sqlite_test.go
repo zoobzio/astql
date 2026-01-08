@@ -10,7 +10,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/zoobzio/astql"
-	"github.com/zoobzio/astql/pkg/sqlite"
+	"github.com/zoobzio/astql/sqlite"
 	"github.com/zoobzio/dbml"
 )
 

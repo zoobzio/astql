@@ -5,7 +5,7 @@ import (
 
 	"github.com/zoobzio/astql"
 	"github.com/zoobzio/astql/internal/types"
-	"github.com/zoobzio/astql/pkg/postgres"
+	"github.com/zoobzio/astql/postgres"
 	"github.com/zoobzio/dbml"
 )
 

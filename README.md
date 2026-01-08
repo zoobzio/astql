@@ -49,7 +49,7 @@ package main
 import (
     "fmt"
     "github.com/zoobzio/astql"
-    "github.com/zoobzio/astql/pkg/postgres"
+    "github.com/zoobzio/astql/postgres"
     "github.com/zoobzio/dbml"
 )
 
@@ -92,10 +92,10 @@ func main() {
 
 ```go
 import (
-    "github.com/zoobzio/astql/pkg/postgres"
-    "github.com/zoobzio/astql/pkg/sqlite"
-    "github.com/zoobzio/astql/pkg/mariadb"
-    "github.com/zoobzio/astql/pkg/mssql"
+    "github.com/zoobzio/astql/postgres"
+    "github.com/zoobzio/astql/sqlite"
+    "github.com/zoobzio/astql/mariadb"
+    "github.com/zoobzio/astql/mssql"
 )
 
 result, _ := query.Render(postgres.New())  // "username", LIMIT 10

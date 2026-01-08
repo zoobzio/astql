@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/zoobzio/astql"
-	pgrenderer "github.com/zoobzio/astql/pkg/postgres"
+	pgrenderer "github.com/zoobzio/astql/postgres"
 	"github.com/zoobzio/dbml"
 )
 

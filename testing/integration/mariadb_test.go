@@ -9,7 +9,7 @@ import (
 
 	"github.com/testcontainers/testcontainers-go/modules/mariadb"
 	"github.com/zoobzio/astql"
-	astqlmariadb "github.com/zoobzio/astql/pkg/mariadb"
+	astqlmariadb "github.com/zoobzio/astql/mariadb"
 	"github.com/zoobzio/dbml"
 )
 

@@ -10,7 +10,7 @@ import (
 
 	"github.com/testcontainers/testcontainers-go/modules/mssql"
 	"github.com/zoobzio/astql"
-	astqlmssql "github.com/zoobzio/astql/pkg/mssql"
+	astqlmssql "github.com/zoobzio/astql/mssql"
 	"github.com/zoobzio/dbml"
 )
 
