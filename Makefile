@@ -83,10 +83,21 @@ coverage:
 # Generate coverage report including integration tests (requires Docker)
 coverage-all:
 	@echo "Generating full coverage report (including integration tests)..."
-	@go test -coverprofile=coverage.out \
-		-coverpkg=github.com/zoobzio/astql,github.com/zoobzio/astql/postgres,github.com/zoobzio/astql/mariadb,github.com/zoobzio/astql/mssql,github.com/zoobzio/astql/sqlite \
-		./...
+	@echo "=== Unit tests ==="
+	@go test -short -coverprofile=unit.out -covermode=atomic -coverpkg=./... ./...
+	@echo "Unit coverage:"
+	@go tool cover -func=unit.out | tail -1
+	@echo ""
+	@echo "=== Integration tests ==="
+	@cd testing/integration && go test -coverprofile=integration.out -covermode=atomic \
+		-coverpkg=github.com/zoobzio/astql/... ./...
+	@echo "Integration coverage:"
+	@go tool cover -func=testing/integration/integration.out | tail -1
+	@echo ""
+	@echo "=== Merging profiles ==="
+	@go run github.com/wadey/gocovmerge@latest unit.out testing/integration/integration.out > coverage.out
 	@go tool cover -html=coverage.out -o coverage.html
+	@echo "Combined coverage:"
 	@go tool cover -func=coverage.out | tail -1
 	@echo "Full coverage report generated: coverage.html"
 

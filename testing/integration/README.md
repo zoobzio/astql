@@ -2,6 +2,8 @@
 
 Integration tests verify astql against real database instances using Docker containers.
 
+This is a **separate Go module** to keep heavy test dependencies (testcontainers, database drivers) out of the main `astql` package. Consumers of `astql` will not download these dependencies.
+
 ## Prerequisites
 
 - Docker must be running
@@ -19,15 +21,35 @@ Integration tests verify astql against real database instances using Docker cont
 ## Running Integration Tests
 
 ```bash
+# From the integration directory
+cd testing/integration
+
 # Run all integration tests
-make test-integration
+go test -v ./...
 
 # Run specific database tests
-go test -v ./testing/integration/... -run TestPostgres
-go test -v ./testing/integration/... -run TestMariaDB
-go test -v ./testing/integration/... -run TestMSSQL
-go test -v ./testing/integration/... -run TestSQLite
+go test -v -run TestPostgres
+go test -v -run TestMariaDB
+go test -v -run TestMSSQL
+go test -v -run TestSQLite
 ```
+
+## Coverage
+
+Integration tests can contribute to coverage of the main `astql` package using `-coverpkg`:
+
+```bash
+# Run integration tests with coverage of main package
+go test -coverpkg=github.com/zoobzio/astql/... -coverprofile=coverage.out ./...
+
+# View coverage report
+go tool cover -func=coverage.out
+
+# Generate HTML report
+go tool cover -html=coverage.out -o coverage.html
+```
+
+This works because `-coverpkg` instruments packages across module boundaries.
 
 ## Container Lifecycle
 
@@ -89,12 +111,15 @@ SQLite tests use in-memory databases directly without containers.
 
 ## CI Behaviour
 
-Integration tests run in CI with Docker available. They are excluded from short-mode unit test runs:
+Integration tests run in CI with Docker available. Since this is a separate module, it must be tested separately:
 
 ```bash
-# Unit tests only (CI fast path)
-go test -short ./...
-
-# Full test suite (CI complete)
+# Unit tests only (main module, fast)
 go test ./...
+
+# Integration tests (from integration directory, requires Docker)
+cd testing/integration && go test ./...
+
+# Combined coverage
+cd testing/integration && go test -coverpkg=github.com/zoobzio/astql/... -coverprofile=integration.out ./...
 ```

@@ -15,68 +15,75 @@ jobs:
   coverage:
     name: Test Coverage Analysis
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Full history for better diff coverage
-    
+        fetch-depth: 0
+
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
         go-version: '1.25'
         cache: true
-    
+
     - name: Install dependencies
       run: |
         go mod download
+        go install github.com/wadey/gocovmerge@latest
         go install github.com/boumenot/gocover-cobertura@latest
-    
-    - name: Run tests with coverage
-      run: |
-        # Test all packages including integration tests
-        echo "=== Testing all packages (including integration) ==="
-        go test -v -race -coverprofile=coverage-all.out -covermode=atomic \
-          -coverpkg=github.com/zoobzio/astql,github.com/zoobzio/astql/postgres,github.com/zoobzio/astql/mariadb,github.com/zoobzio/astql/mssql,github.com/zoobzio/astql/sqlite \
-          ./...
 
-        # Generate coverage report
-        go tool cover -func=coverage-all.out > coverage-summary.txt
-        echo "Overall Coverage Summary:"
+    - name: Run unit tests with coverage
+      run: |
+        echo "=== Running unit tests ==="
+        go test -short -coverprofile=unit.out -covermode=atomic \
+          -coverpkg=./... ./...
+        echo "Unit test coverage:"
+        go tool cover -func=unit.out | tail -1
+
+    - name: Run integration tests with coverage
+      run: |
+        echo "=== Running integration tests ==="
+        cd testing/integration
+        go mod download
+        go test -coverprofile=integration.out -covermode=atomic \
+          -coverpkg=github.com/zoobzio/astql/... ./...
+        echo "Integration test coverage contribution:"
+        go tool cover -func=integration.out | tail -1
+
+    - name: Merge coverage profiles
+      run: |
+        echo "=== Merging coverage profiles ==="
+        gocovmerge unit.out testing/integration/integration.out > coverage.out
+
+        # Generate reports
+        go tool cover -func=coverage.out > coverage-summary.txt
+        echo "Combined Coverage Summary:"
         tail -1 coverage-summary.txt
 
         # Generate HTML report
-        go tool cover -html=coverage-all.out -o coverage-all.html
+        go tool cover -html=coverage.out -o coverage.html
 
-        # Convert to Cobertura format for better PR integration
-        gocover-cobertura < coverage-all.out > coverage-all.xml
-    
-    - name: Generate package-specific reports
-      run: |
-        echo "=== Package Coverage Reports ==="
+        # Convert to Cobertura format for PR integration
+        gocover-cobertura < coverage.out > coverage.xml
 
-        # Overall coverage
-        go tool cover -func=coverage-all.out | tail -1 | awk '{print "Overall: " $3}'
-    
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        files: ./coverage-all.out
-        flags: unit
+        files: ./coverage.out
+        flags: combined
         name: astql-coverage
         fail_ci_if_error: false
         verbose: true
-    
+
     - name: Generate coverage badge
       run: |
-        # Extract coverage percentage
-        COVERAGE=$(go tool cover -func=coverage-all.out | tail -1 | grep -oE '[0-9]+\.[0-9]+' | tail -1)
+        COVERAGE=$(go tool cover -func=coverage.out | tail -1 | grep -oE '[0-9]+\.[0-9]+' | tail -1)
         echo "Overall coverage: $COVERAGE%"
         echo "COVERAGE=$COVERAGE" >> $GITHUB_ENV
-        
-        # Determine badge color
+
         if awk "BEGIN {exit !($COVERAGE >= 80)}"; then
           COLOR="green"
         elif awk "BEGIN {exit !($COVERAGE >= 70)}"; then
@@ -85,63 +92,52 @@ jobs:
           COLOR="red"
         fi
         echo "COVERAGE_COLOR=$COLOR" >> $GITHUB_ENV
-    
+
     - name: Create coverage comment (PR only)
       if: github.event_name == 'pull_request'
       uses: actions/github-script@v7
       with:
         script: |
           const fs = require('fs');
-          
-          // Read coverage summary
+
           const summary = fs.readFileSync('coverage-summary.txt', 'utf8');
           const lines = summary.split('\n').filter(line => line.trim());
-          
-          // Extract key metrics
+
           const totalLine = lines[lines.length - 1];
           const coverage = totalLine.match(/(\d+\.\d+)%/)?.[1] || 'N/A';
-          
-          // Package metrics
-          const packageMetrics = `
-          | Package | Coverage |
-          |----------|----------|
-          | Overall | ${coverage}% |
-          `;
-          
-          // Create comment body
+
           const body = `## 📊 Coverage Report
 
           **Total Coverage:** ${coverage}%
 
           ### Coverage by Package
           \`\`\`
-          ${lines.slice(0, -1).join('\n')}
+          ${lines.slice(-20).join('\n')}
           \`\`\`
-          
+
           <details>
-          <summary>View Coverage Details</summary>
-          
-          Coverage reports are available in the Actions artifacts.
-          
+          <summary>View Full Coverage Details</summary>
+
+          Coverage includes both unit tests and integration tests.
+
           - HTML Report: Download from artifacts
           - Detailed breakdown by file available in CI logs
-          
+
           </details>
-          
+
           ---
           *Coverage standards: ≥70% (passing), ≥80% (excellent)*`;
-          
-          // Post or update comment
+
           const { data: comments } = await github.rest.issues.listComments({
             owner: context.repo.owner,
             repo: context.repo.repo,
             issue_number: context.issue.number,
           });
-          
-          const botComment = comments.find(comment => 
+
+          const botComment = comments.find(comment =>
             comment.user.type === 'Bot' && comment.body.includes('📊 Coverage Report')
           );
-          
+
           if (botComment) {
             await github.rest.issues.updateComment({
               owner: context.repo.owner,
@@ -158,31 +154,31 @@ jobs:
             });
           }
       continue-on-error: true
-    
+
     - name: Upload coverage artifacts
       uses: actions/upload-artifact@v4
       with:
         name: coverage-reports
         path: |
-          coverage-all.out
-          coverage-all.html
-          coverage-all.xml
+          coverage.out
+          coverage.html
+          coverage.xml
           coverage-summary.txt
+          unit.out
+          testing/integration/integration.out
         retention-days: 30
-    
+
     - name: Coverage summary
       run: |
         echo "### 📊 Test Coverage Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Overall Coverage:** ${{ env.COVERAGE }}%" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "#### Coverage by Package" >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-        head -n -1 coverage-summary.txt >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "#### Package Coverage" >> $GITHUB_STEP_SUMMARY
-        echo "- Overall: $(go tool cover -func=coverage-all.out | tail -1 | awk '{print $3}')" >> $GITHUB_STEP_SUMMARY
+        echo "| Source | Coverage |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------|----------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Unit Tests | $(go tool cover -func=unit.out | tail -1 | awk '{print $3}') |" >> $GITHUB_STEP_SUMMARY
+        echo "| Integration Tests | $(go tool cover -func=testing/integration/integration.out | tail -1 | awk '{print $3}') |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Combined** | **${{ env.COVERAGE }}%** |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "#### Coverage Standards" >> $GITHUB_STEP_SUMMARY
         echo "- 🎯 Target: 70% overall" >> $GITHUB_STEP_SUMMARY
