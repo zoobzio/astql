@@ -13,7 +13,7 @@ Type-safe SQL query builder with DBML schema validation.
 
 Build queries as an AST, validate against your schema, render to parameterized SQL.
 
-## Queries That Know Their Shape
+## Injection-safe SQL Expressions, Any Dialect
 
 ```go
 instance.T("users")      // ✓ exists in schema
@@ -108,13 +108,13 @@ func main() {
 
 ## Capabilities
 
-| Feature | Description | Docs |
-|---------|-------------|------|
-| Schema Validation | Tables and fields checked against DBML at build time | [Schema Validation](docs/3.guides/1.schema-validation.md) |
-| Multi-Dialect | PostgreSQL, SQLite, MariaDB, MSSQL from one AST | [Architecture](docs/2.learn/3.architecture.md) |
-| Parameterized Values | Injection-resistant queries with named parameters | [Conditions](docs/3.guides/2.conditions.md) |
-| Composable Queries | Subqueries, JOINs, aggregates, window functions | [Joins](docs/3.guides/3.joins.md) |
-| CASE Expressions | Conditional logic within queries | [API](docs/5.reference/1.api.md) |
+| Feature              | Description                                          | Docs                                                      |
+| -------------------- | ---------------------------------------------------- | --------------------------------------------------------- |
+| Schema Validation    | Tables and fields checked against DBML at build time | [Schema Validation](docs/3.guides/1.schema-validation.md) |
+| Multi-Dialect        | PostgreSQL, SQLite, MariaDB, MSSQL from one AST      | [Architecture](docs/2.learn/3.architecture.md)            |
+| Parameterized Values | Injection-resistant queries with named parameters    | [Conditions](docs/3.guides/2.conditions.md)               |
+| Composable Queries   | Subqueries, JOINs, aggregates, window functions      | [Joins](docs/3.guides/3.joins.md)                         |
+| CASE Expressions     | Conditional logic within queries                     | [API](docs/5.reference/1.api.md)                          |
 
 ## Why ASTQL?
 
