@@ -83,13 +83,8 @@ release:
   
   footer: |
     ---
-    
+
     **Full Changelog**: https://github.com/zoobzio/astql/compare/{{ .PreviousTag }}...{{ .Tag }}
-    
-    ### Contributors
-    {{ range .Contributors }}
-    - @{{ .Username }}
-    {{ end }}
 
   prerelease: auto
   mode: append
