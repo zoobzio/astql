@@ -218,7 +218,52 @@ func (r *Renderer) validateAST(ast *types.AST) error {
 			"SQLite uses database-level locking")
 	}
 
-	// Check for unsupported operators in conditions
+	// Check for JSONB fields in all field locations
+	for _, field := range ast.Fields {
+		if err := r.checkJSONBField(field); err != nil {
+			return err
+		}
+	}
+
+	for i := range ast.FieldExpressions {
+		if err := r.validateFieldExpression(&ast.FieldExpressions[i]); err != nil {
+			return err
+		}
+	}
+
+	for _, field := range ast.GroupBy {
+		if err := r.checkJSONBField(field); err != nil {
+			return err
+		}
+	}
+
+	for i := range ast.Ordering {
+		if err := r.checkJSONBField(ast.Ordering[i].Field); err != nil {
+			return err
+		}
+	}
+
+	for _, field := range ast.Returning {
+		if err := r.checkJSONBField(field); err != nil {
+			return err
+		}
+	}
+
+	for field := range ast.Updates {
+		if err := r.checkJSONBField(field); err != nil {
+			return err
+		}
+	}
+
+	for _, valueSet := range ast.Values {
+		for field := range valueSet {
+			if err := r.checkJSONBField(field); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Check for unsupported operators and JSONB in conditions
 	if ast.WhereClause != nil {
 		if err := r.validateCondition(ast.WhereClause); err != nil {
 			return err
@@ -249,10 +294,75 @@ func (r *Renderer) validateAST(ast *types.AST) error {
 	return nil
 }
 
-// validateCondition recursively checks conditions for unsupported operators.
+// validateFieldExpression validates a field expression for JSONB fields.
+func (r *Renderer) validateFieldExpression(expr *types.FieldExpression) error {
+	if err := r.checkJSONBField(expr.Field); err != nil {
+		return err
+	}
+
+	if expr.Binary != nil {
+		if err := r.checkJSONBField(expr.Binary.Field); err != nil {
+			return err
+		}
+	}
+
+	if expr.Math != nil {
+		if err := r.checkJSONBField(expr.Math.Field); err != nil {
+			return err
+		}
+	}
+
+	if expr.String != nil {
+		if err := r.checkJSONBField(expr.String.Field); err != nil {
+			return err
+		}
+		for _, f := range expr.String.Fields {
+			if err := r.checkJSONBField(f); err != nil {
+				return err
+			}
+		}
+	}
+
+	if expr.Date != nil && expr.Date.Field != nil {
+		if err := r.checkJSONBField(*expr.Date.Field); err != nil {
+			return err
+		}
+	}
+
+	if expr.Cast != nil {
+		if err := r.checkJSONBField(expr.Cast.Field); err != nil {
+			return err
+		}
+	}
+
+	if expr.Window != nil {
+		if expr.Window.Field != nil {
+			if err := r.checkJSONBField(*expr.Window.Field); err != nil {
+				return err
+			}
+		}
+		for _, f := range expr.Window.Window.PartitionBy {
+			if err := r.checkJSONBField(f); err != nil {
+				return err
+			}
+		}
+		for i := range expr.Window.Window.OrderBy {
+			if err := r.checkJSONBField(expr.Window.Window.OrderBy[i].Field); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateCondition recursively checks conditions for unsupported operators and JSONB fields.
 func (r *Renderer) validateCondition(cond types.ConditionItem) error {
 	switch c := cond.(type) {
 	case types.Condition:
+		if err := r.checkJSONBField(c.Field); err != nil {
+			return err
+		}
 		return r.validateOperator(c.Operator)
 	case types.ConditionGroup:
 		for _, sub := range c.Conditions {
@@ -261,8 +371,19 @@ func (r *Renderer) validateCondition(cond types.ConditionItem) error {
 			}
 		}
 	case types.FieldComparison:
+		if err := r.checkJSONBField(c.LeftField); err != nil {
+			return err
+		}
+		if err := r.checkJSONBField(c.RightField); err != nil {
+			return err
+		}
 		return r.validateOperator(c.Operator)
 	case types.SubqueryCondition:
+		if c.Field != nil {
+			if err := r.checkJSONBField(*c.Field); err != nil {
+				return err
+			}
+		}
 		if err := r.validateOperator(c.Operator); err != nil {
 			return err
 		}
@@ -272,7 +393,16 @@ func (r *Renderer) validateCondition(cond types.ConditionItem) error {
 			}
 		}
 	case types.AggregateCondition:
+		if c.Field != nil {
+			if err := r.checkJSONBField(*c.Field); err != nil {
+				return err
+			}
+		}
 		return r.validateOperator(c.Operator)
+	case types.BetweenCondition:
+		if err := r.checkJSONBField(c.Field); err != nil {
+			return err
+		}
 	}
 	return nil
 }

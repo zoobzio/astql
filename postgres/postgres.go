@@ -184,6 +184,10 @@ func (r *Renderer) RenderCompound(query *types.CompoundQuery) (*types.QueryResul
 			} else {
 				part = fmt.Sprintf("%s %s", r.renderFieldCtx(order.Field, finalCtx), order.Direction)
 			}
+			// Append NULLS FIRST/LAST if specified
+			if order.Nulls != "" {
+				part += " " + string(order.Nulls)
+			}
 			orderParts = append(orderParts, part)
 		}
 		sql.WriteString(strings.Join(orderParts, ", "))
@@ -423,8 +427,9 @@ func (r *Renderer) renderInsert(ast *types.AST, sql *strings.Builder, addParam f
 	if len(ast.Returning) > 0 {
 		sql.WriteString(" RETURNING ")
 		var fields []string
+		returningCtx := newRenderContext(addParam)
 		for _, field := range ast.Returning {
-			fields = append(fields, r.renderField(field))
+			fields = append(fields, r.renderFieldCtx(field, returningCtx))
 		}
 		sql.WriteString(strings.Join(fields, ", "))
 	}
@@ -470,8 +475,9 @@ func (r *Renderer) renderUpdate(ast *types.AST, sql *strings.Builder, addParam f
 	if len(ast.Returning) > 0 {
 		sql.WriteString(" RETURNING ")
 		var fields []string
+		returningCtx := newRenderContext(addParam)
 		for _, field := range ast.Returning {
-			fields = append(fields, r.renderField(field))
+			fields = append(fields, r.renderFieldCtx(field, returningCtx))
 		}
 		sql.WriteString(strings.Join(fields, ", "))
 	}
@@ -496,8 +502,9 @@ func (r *Renderer) renderDelete(ast *types.AST, sql *strings.Builder, addParam f
 	if len(ast.Returning) > 0 {
 		sql.WriteString(" RETURNING ")
 		var fields []string
+		returningCtx := newRenderContext(addParam)
 		for _, field := range ast.Returning {
-			fields = append(fields, r.renderField(field))
+			fields = append(fields, r.renderFieldCtx(field, returningCtx))
 		}
 		sql.WriteString(strings.Join(fields, ", "))
 	}
