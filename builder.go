@@ -763,6 +763,19 @@ func (cb *CompoundBuilder) OrderBy(f types.Field, direction types.Direction) *Co
 	return cb
 }
 
+// OrderByNulls adds final ordering with NULLS FIRST/LAST to the compound query.
+func (cb *CompoundBuilder) OrderByNulls(f types.Field, direction types.Direction, nulls types.NullsOrdering) *CompoundBuilder {
+	if cb.err != nil {
+		return cb
+	}
+	cb.query.Ordering = append(cb.query.Ordering, types.OrderBy{
+		Field:     f,
+		Direction: direction,
+		Nulls:     nulls,
+	})
+	return cb
+}
+
 // Limit sets the limit for the compound query to a static integer value.
 func (cb *CompoundBuilder) Limit(limit int) *CompoundBuilder {
 	if cb.err != nil {

@@ -1736,7 +1736,7 @@ func TestRender_JSONB_NonPostgresError(t *testing.T) {
 		mariadbRenderer := createMariaDBRenderer()
 		_, err := query.Render(mariadbRenderer)
 		if err == nil {
-			t.Error("Expected error for JSONB field with MariaDB renderer")
+			t.Fatal("Expected error for JSONB field with MariaDB renderer")
 		}
 		if !strings.Contains(err.Error(), "JSONB") {
 			t.Errorf("Expected error to mention JSONB, got: %v", err)
@@ -1748,7 +1748,7 @@ func TestRender_JSONB_NonPostgresError(t *testing.T) {
 		sqliteRenderer := createSQLiteRenderer()
 		_, err := query.Render(sqliteRenderer)
 		if err == nil {
-			t.Error("Expected error for JSONB field with SQLite renderer")
+			t.Fatal("Expected error for JSONB field with SQLite renderer")
 		}
 		if !strings.Contains(err.Error(), "JSONB") {
 			t.Errorf("Expected error to mention JSONB, got: %v", err)
@@ -1760,7 +1760,7 @@ func TestRender_JSONB_NonPostgresError(t *testing.T) {
 		mssqlRenderer := createMSSQLRenderer()
 		_, err := query.Render(mssqlRenderer)
 		if err == nil {
-			t.Error("Expected error for JSONB field with MSSQL renderer")
+			t.Fatal("Expected error for JSONB field with MSSQL renderer")
 		}
 		if !strings.Contains(err.Error(), "JSONB") {
 			t.Errorf("Expected error to mention JSONB, got: %v", err)
@@ -1830,7 +1830,7 @@ func TestRender_BinaryExpr_JSONBField_NonPostgresError(t *testing.T) {
 	t.Run("MariaDB", func(t *testing.T) {
 		_, err := query.Render(createMariaDBRenderer())
 		if err == nil {
-			t.Error("Expected error for JSONB field in binary expression with MariaDB")
+			t.Fatal("Expected error for JSONB field in binary expression with MariaDB")
 		}
 		if !strings.Contains(err.Error(), "JSONB") {
 			t.Errorf("Expected error to mention JSONB, got: %v", err)
@@ -1840,7 +1840,7 @@ func TestRender_BinaryExpr_JSONBField_NonPostgresError(t *testing.T) {
 	t.Run("SQLite", func(t *testing.T) {
 		_, err := query.Render(createSQLiteRenderer())
 		if err == nil {
-			t.Error("Expected error for JSONB field in binary expression with SQLite")
+			t.Fatal("Expected error for JSONB field in binary expression with SQLite")
 		}
 		if !strings.Contains(err.Error(), "JSONB") {
 			t.Errorf("Expected error to mention JSONB, got: %v", err)
@@ -1850,7 +1850,7 @@ func TestRender_BinaryExpr_JSONBField_NonPostgresError(t *testing.T) {
 	t.Run("MSSQL", func(t *testing.T) {
 		_, err := query.Render(createMSSQLRenderer())
 		if err == nil {
-			t.Error("Expected error for JSONB field in binary expression with MSSQL")
+			t.Fatal("Expected error for JSONB field in binary expression with MSSQL")
 		}
 		if !strings.Contains(err.Error(), "JSONB") {
 			t.Errorf("Expected error to mention JSONB, got: %v", err)
@@ -1873,21 +1873,730 @@ func TestRender_BinaryExpr_UnsupportedOperator(t *testing.T) {
 	t.Run("MariaDB", func(t *testing.T) {
 		_, err := query.Render(createMariaDBRenderer())
 		if err == nil {
-			t.Error("Expected error for unsupported vector operator with MariaDB")
+			t.Fatal("Expected error for unsupported vector operator with MariaDB")
 		}
 	})
 
 	t.Run("SQLite", func(t *testing.T) {
 		_, err := query.Render(createSQLiteRenderer())
 		if err == nil {
-			t.Error("Expected error for unsupported vector operator with SQLite")
+			t.Fatal("Expected error for unsupported vector operator with SQLite")
 		}
 	})
 
 	t.Run("MSSQL", func(t *testing.T) {
 		_, err := query.Render(createMSSQLRenderer())
 		if err == nil {
-			t.Error("Expected error for unsupported vector operator with MSSQL")
+			t.Fatal("Expected error for unsupported vector operator with MSSQL")
+		}
+	})
+}
+
+// Test JSONB in WHERE clause errors on non-postgres providers.
+func TestRender_JSONB_InWhere_NonPostgresError(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	jsonbField := instance.JSONBText(instance.F("metadata"), instance.P("status_key"))
+	query := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		Where(instance.C(jsonbField, astql.EQ, instance.P("status_value")))
+
+	t.Run("MariaDB", func(t *testing.T) {
+		_, err := query.Render(createMariaDBRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in WHERE with MariaDB")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("SQLite", func(t *testing.T) {
+		_, err := query.Render(createSQLiteRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in WHERE with SQLite")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("MSSQL", func(t *testing.T) {
+		_, err := query.Render(createMSSQLRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in WHERE with MSSQL")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+}
+
+// Test JSONB in ORDER BY errors on non-postgres providers.
+func TestRender_JSONB_InOrderBy_NonPostgresError(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	jsonbField := instance.JSONBText(instance.F("metadata"), instance.P("sort_key"))
+	query := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		OrderBy(jsonbField, astql.ASC)
+
+	t.Run("MariaDB", func(t *testing.T) {
+		_, err := query.Render(createMariaDBRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in ORDER BY with MariaDB")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("SQLite", func(t *testing.T) {
+		_, err := query.Render(createSQLiteRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in ORDER BY with SQLite")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("MSSQL", func(t *testing.T) {
+		_, err := query.Render(createMSSQLRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in ORDER BY with MSSQL")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+}
+
+// Test JSONB in GROUP BY errors on non-postgres providers.
+func TestRender_JSONB_InGroupBy_NonPostgresError(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	jsonbField := instance.JSONBText(instance.F("metadata"), instance.P("group_key"))
+	query := astql.Select(instance.T("documents")).
+		Fields(jsonbField).
+		GroupBy(jsonbField)
+
+	t.Run("MariaDB", func(t *testing.T) {
+		_, err := query.Render(createMariaDBRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in GROUP BY with MariaDB")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("SQLite", func(t *testing.T) {
+		_, err := query.Render(createSQLiteRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in GROUP BY with SQLite")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("MSSQL", func(t *testing.T) {
+		_, err := query.Render(createMSSQLRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in GROUP BY with MSSQL")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+}
+
+// Test compound query ORDER BY with NULLS FIRST/LAST renders correctly.
+func TestRender_CompoundQuery_OrderByNulls(t *testing.T) {
+	instance := createRenderTestInstance(t)
+
+	query1 := astql.Select(instance.T("users")).Fields(instance.F("username"))
+	query2 := astql.Select(instance.T("users")).Fields(instance.F("username"))
+
+	compound := astql.Union(query1, query2).
+		OrderByNulls(instance.F("username"), astql.ASC, astql.NullsLast)
+
+	result, err := compound.Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `(SELECT "username" FROM "users") UNION (SELECT "username" FROM "users") ORDER BY "username" ASC NULLS LAST`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+// Test JSONB field in RETURNING clause for UPDATE.
+func TestRender_Update_JSONB_Returning(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	jsonbField := instance.JSONBText(instance.F("metadata"), instance.P("status_key"))
+	query := astql.Update(instance.T("documents")).
+		Set(instance.F("content"), instance.P("new_content")).
+		Where(instance.C(instance.F("id"), astql.EQ, instance.P("id"))).
+		Returning(instance.F("id"), jsonbField)
+
+	result, err := query.Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `UPDATE "documents" SET "content" = :new_content WHERE "id" = :id RETURNING "id", "metadata"->>:status_key`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+
+	// Verify params include the JSONB key
+	expectedParams := []string{"new_content", "id", "status_key"}
+	if len(result.RequiredParams) != len(expectedParams) {
+		t.Errorf("Expected %d params, got %d: %v", len(expectedParams), len(result.RequiredParams), result.RequiredParams)
+	}
+	for i, p := range expectedParams {
+		if result.RequiredParams[i] != p {
+			t.Errorf("Expected param[%d] = %s, got %s", i, p, result.RequiredParams[i])
+		}
+	}
+}
+
+// Test JSONB field in RETURNING clause for DELETE.
+func TestRender_Delete_JSONB_Returning(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	jsonbField := instance.JSONBPath(instance.F("metadata"), instance.P("tags_key"))
+	query := astql.Delete(instance.T("documents")).
+		Where(instance.C(instance.F("id"), astql.EQ, instance.P("id"))).
+		Returning(jsonbField)
+
+	result, err := query.Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `DELETE FROM "documents" WHERE "id" = :id RETURNING "metadata"->:tags_key`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+
+	// Verify params include the JSONB key
+	expectedParams := []string{"id", "tags_key"}
+	if len(result.RequiredParams) != len(expectedParams) {
+		t.Errorf("Expected %d params, got %d: %v", len(expectedParams), len(result.RequiredParams), result.RequiredParams)
+	}
+	for i, p := range expectedParams {
+		if result.RequiredParams[i] != p {
+			t.Errorf("Expected param[%d] = %s, got %s", i, p, result.RequiredParams[i])
+		}
+	}
+}
+
+// Test JSONB field in RETURNING clause for INSERT.
+func TestRender_Insert_JSONB_Returning(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	jsonbField := instance.JSONBText(instance.F("metadata"), instance.P("created_key"))
+	vm := instance.ValueMap()
+	vm[instance.F("content")] = instance.P("content")
+	query := astql.Insert(instance.T("documents")).
+		Values(vm).
+		Returning(instance.F("id"), jsonbField)
+
+	result, err := query.Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `INSERT INTO "documents" ("content") VALUES (:content) RETURNING "id", "metadata"->>:created_key`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+
+	// Verify params include the JSONB key
+	expectedParams := []string{"content", "created_key"}
+	if len(result.RequiredParams) != len(expectedParams) {
+		t.Errorf("Expected %d params, got %d: %v", len(expectedParams), len(result.RequiredParams), result.RequiredParams)
+	}
+	for i, p := range expectedParams {
+		if result.RequiredParams[i] != p {
+			t.Errorf("Expected param[%d] = %s, got %s", i, p, result.RequiredParams[i])
+		}
+	}
+}
+
+// Test JSONB in Cast expression errors on non-postgres providers.
+func TestRender_JSONB_InCast_NonPostgresError(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	jsonbField := instance.JSONBText(instance.F("metadata"), instance.P("num_key"))
+	query := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		SelectExpr(astql.As(
+			astql.Cast(jsonbField, astql.CastInteger),
+			"num_value",
+		))
+
+	t.Run("MariaDB", func(t *testing.T) {
+		_, err := query.Render(createMariaDBRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in Cast with MariaDB")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("SQLite", func(t *testing.T) {
+		_, err := query.Render(createSQLiteRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in Cast with SQLite")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("MSSQL", func(t *testing.T) {
+		_, err := query.Render(createMSSQLRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in Cast with MSSQL")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+}
+
+// Test JSONB in Math expression errors on non-postgres providers.
+func TestRender_JSONB_InMath_NonPostgresError(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	jsonbField := instance.JSONBText(instance.F("metadata"), instance.P("num_key"))
+	query := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		SelectExpr(astql.As(
+			astql.Round(jsonbField, instance.P("precision")),
+			"rounded",
+		))
+
+	t.Run("MariaDB", func(t *testing.T) {
+		_, err := query.Render(createMariaDBRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in Math with MariaDB")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("SQLite", func(t *testing.T) {
+		_, err := query.Render(createSQLiteRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in Math with SQLite")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("MSSQL", func(t *testing.T) {
+		_, err := query.Render(createMSSQLRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in Math with MSSQL")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+}
+
+// Test JSONB in String expression errors on non-postgres providers.
+func TestRender_JSONB_InString_NonPostgresError(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	jsonbField := instance.JSONBText(instance.F("metadata"), instance.P("str_key"))
+	query := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		SelectExpr(astql.As(
+			astql.Upper(jsonbField),
+			"upper_val",
+		))
+
+	t.Run("MariaDB", func(t *testing.T) {
+		_, err := query.Render(createMariaDBRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in String with MariaDB")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("SQLite", func(t *testing.T) {
+		_, err := query.Render(createSQLiteRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in String with SQLite")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("MSSQL", func(t *testing.T) {
+		_, err := query.Render(createMSSQLRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in String with MSSQL")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+}
+
+// Test JSONB in BETWEEN condition errors on non-postgres providers.
+func TestRender_JSONB_InBetween_NonPostgresError(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	jsonbField := instance.JSONBText(instance.F("metadata"), instance.P("num_key"))
+	query := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		Where(astql.Between(jsonbField, instance.P("low"), instance.P("high")))
+
+	t.Run("MariaDB", func(t *testing.T) {
+		_, err := query.Render(createMariaDBRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in BETWEEN with MariaDB")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("SQLite", func(t *testing.T) {
+		_, err := query.Render(createSQLiteRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in BETWEEN with SQLite")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("MSSQL", func(t *testing.T) {
+		_, err := query.Render(createMSSQLRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in BETWEEN with MSSQL")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+}
+
+// Test JSONB in field comparison errors on non-postgres providers.
+func TestRender_JSONB_InFieldComparison_NonPostgresError(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	jsonbField := instance.JSONBText(instance.F("metadata"), instance.P("key"))
+	query := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		Where(astql.CF(jsonbField, astql.EQ, instance.F("content")))
+
+	t.Run("MariaDB", func(t *testing.T) {
+		_, err := query.Render(createMariaDBRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in FieldComparison with MariaDB")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("SQLite", func(t *testing.T) {
+		_, err := query.Render(createSQLiteRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in FieldComparison with SQLite")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("MSSQL", func(t *testing.T) {
+		_, err := query.Render(createMSSQLRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in FieldComparison with MSSQL")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+}
+
+// Test JSONB in JOIN ON condition errors on non-postgres providers.
+func TestRender_JSONB_InJoinOn_NonPostgresError(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	jsonbField := instance.JSONBText(instance.F("metadata"), instance.P("ref_key"))
+	query := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		LeftJoin(instance.T("documents"),
+			instance.C(jsonbField, astql.EQ, instance.P("ref_value")))
+
+	t.Run("MariaDB", func(t *testing.T) {
+		_, err := query.Render(createMariaDBRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in JOIN ON with MariaDB")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("SQLite", func(t *testing.T) {
+		_, err := query.Render(createSQLiteRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in JOIN ON with SQLite")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("MSSQL", func(t *testing.T) {
+		_, err := query.Render(createMSSQLRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in JOIN ON with MSSQL")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+}
+
+// Test JSONB in Window function Field errors on non-postgres providers.
+func TestRender_JSONB_InWindowField_NonPostgresError(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	jsonbField := instance.JSONBText(instance.F("metadata"), instance.P("amount_key"))
+	windowExpr := astql.SumOver(jsonbField).
+		PartitionBy(instance.F("id")).
+		As("running_total")
+
+	query := astql.Select(instance.T("documents")).
+		SelectExpr(windowExpr)
+
+	t.Run("MariaDB", func(t *testing.T) {
+		_, err := query.Render(createMariaDBRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in Window expression with MariaDB")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("SQLite", func(t *testing.T) {
+		_, err := query.Render(createSQLiteRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in Window expression with SQLite")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("MSSQL", func(t *testing.T) {
+		_, err := query.Render(createMSSQLRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in Window expression with MSSQL")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+}
+
+// Test JSONB in Window PartitionBy errors on non-postgres providers.
+func TestRender_JSONB_InWindowPartitionBy_NonPostgresError(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	jsonbField := instance.JSONBText(instance.F("metadata"), instance.P("group_key"))
+	windowExpr := astql.RowNumber().
+		PartitionBy(jsonbField).
+		OrderBy(instance.F("id"), astql.DESC).
+		As("row_num")
+
+	query := astql.Select(instance.T("documents")).
+		SelectExpr(windowExpr)
+
+	t.Run("MariaDB", func(t *testing.T) {
+		_, err := query.Render(createMariaDBRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in Window PartitionBy with MariaDB")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("SQLite", func(t *testing.T) {
+		_, err := query.Render(createSQLiteRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in Window PartitionBy with SQLite")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("MSSQL", func(t *testing.T) {
+		_, err := query.Render(createMSSQLRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in Window PartitionBy with MSSQL")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+}
+
+// Test JSONB in Window OrderBy errors on non-postgres providers.
+func TestRender_JSONB_InWindowOrderBy_NonPostgresError(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	jsonbField := instance.JSONBText(instance.F("metadata"), instance.P("sort_key"))
+	windowExpr := astql.RowNumber().
+		PartitionBy(instance.F("id")).
+		OrderBy(jsonbField, astql.ASC).
+		As("row_num")
+
+	query := astql.Select(instance.T("documents")).
+		SelectExpr(windowExpr)
+
+	t.Run("MariaDB", func(t *testing.T) {
+		_, err := query.Render(createMariaDBRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in Window OrderBy with MariaDB")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("SQLite", func(t *testing.T) {
+		_, err := query.Render(createSQLiteRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in Window OrderBy with SQLite")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("MSSQL", func(t *testing.T) {
+		_, err := query.Render(createMSSQLRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in Window OrderBy with MSSQL")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+}
+
+// Test JSONB in ConditionGroup (OR) errors on non-postgres providers.
+func TestRender_JSONB_InConditionGroup_NonPostgresError(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	jsonbField := instance.JSONBText(instance.F("metadata"), instance.P("status_key"))
+	orGroup := instance.Or(
+		instance.C(instance.F("id"), astql.EQ, instance.P("doc_id")),
+		instance.C(jsonbField, astql.EQ, instance.P("status")),
+	)
+
+	query := astql.Select(instance.T("documents")).
+		Where(orGroup)
+
+	t.Run("MariaDB", func(t *testing.T) {
+		_, err := query.Render(createMariaDBRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in ConditionGroup with MariaDB")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("SQLite", func(t *testing.T) {
+		_, err := query.Render(createSQLiteRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in ConditionGroup with SQLite")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("MSSQL", func(t *testing.T) {
+		_, err := query.Render(createMSSQLRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in ConditionGroup with MSSQL")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+}
+
+// Test JSONB in AggregateCondition (HAVING) errors on non-postgres providers.
+func TestRender_JSONB_InAggregateCondition_NonPostgresError(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	jsonbField := instance.JSONBText(instance.F("metadata"), instance.P("amount_key"))
+
+	query := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		GroupBy(instance.F("id")).
+		HavingAgg(astql.AggregateCondition{
+			Func:     astql.AggSum,
+			Field:    &jsonbField,
+			Operator: astql.GT,
+			Value:    instance.P("min_total"),
+		})
+
+	t.Run("MariaDB", func(t *testing.T) {
+		_, err := query.Render(createMariaDBRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in AggregateCondition with MariaDB")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("SQLite", func(t *testing.T) {
+		_, err := query.Render(createSQLiteRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in AggregateCondition with SQLite")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("MSSQL", func(t *testing.T) {
+		_, err := query.Render(createMSSQLRenderer())
+		if err == nil {
+			t.Fatal("Expected error for JSONB field in AggregateCondition with MSSQL")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
 		}
 	})
 }
