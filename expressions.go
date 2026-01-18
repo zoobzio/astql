@@ -329,6 +329,19 @@ func Cast(field types.Field, castType types.CastType) types.FieldExpression {
 	}
 }
 
+// BinaryExpr creates a binary expression for field <op> param patterns.
+// Commonly used for vector distance calculations, e.g., embedding <-> :query
+// Example: BinaryExpr(embedding, VectorL2Distance, query) -> "embedding" <-> :query
+func BinaryExpr(field types.Field, op types.Operator, param types.Param) types.FieldExpression {
+	return types.FieldExpression{
+		Binary: &types.BinaryExpression{
+			Field:    field,
+			Operator: op,
+			Param:    param,
+		},
+	}
+}
+
 // String functions
 
 // Upper creates an UPPER string expression.

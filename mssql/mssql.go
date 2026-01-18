@@ -170,17 +170,28 @@ func (r *Renderer) RenderCompound(query *types.CompoundQuery) (*types.QueryResul
 		queryIndex++
 	}
 
+	// Create context for final ORDER BY/OFFSET/FETCH params
+	finalCtx := newRenderContext(makeParamCallback(""))
+
 	if len(query.Ordering) > 0 {
 		sql.WriteString(" ORDER BY ")
 		var orderParts []string
-		for _, order := range query.Ordering {
-			orderParts = append(orderParts, fmt.Sprintf("%s %s", r.renderField(order.Field), order.Direction))
+		for i := range query.Ordering {
+			order := &query.Ordering[i]
+			var part string
+			if order.Operator != "" {
+				part = fmt.Sprintf("%s %s %s %s",
+					r.renderField(order.Field),
+					r.renderOperator(order.Operator),
+					finalCtx.addParam(order.Param),
+					order.Direction)
+			} else {
+				part = fmt.Sprintf("%s %s", r.renderField(order.Field), order.Direction)
+			}
+			orderParts = append(orderParts, part)
 		}
 		sql.WriteString(strings.Join(orderParts, ", "))
 	}
-
-	// Create context for final OFFSET/FETCH params
-	finalCtx := newRenderContext(makeParamCallback(""))
 
 	// SQL Server uses OFFSET/FETCH instead of LIMIT/OFFSET
 	if query.Offset != nil || query.Limit != nil {
@@ -312,6 +323,9 @@ func (r *Renderer) renderSelect(ast *types.AST, sql *strings.Builder, ctx *rende
 		var selections []string
 
 		for _, field := range ast.Fields {
+			if err := r.checkJSONBField(field); err != nil {
+				return err
+			}
 			selections = append(selections, r.renderField(field))
 		}
 
@@ -373,7 +387,8 @@ func (r *Renderer) renderSelect(ast *types.AST, sql *strings.Builder, ctx *rende
 	if len(ast.Ordering) > 0 {
 		sql.WriteString(" ORDER BY ")
 		var orderParts []string
-		for _, order := range ast.Ordering {
+		for i := range ast.Ordering {
+			order := &ast.Ordering[i]
 			var part string
 			if order.Operator != "" {
 				part = fmt.Sprintf("%s %s %s %s",
@@ -590,6 +605,15 @@ func (r *Renderer) renderField(field types.Field) string {
 	return quotedName
 }
 
+// checkJSONBField returns an error if the field uses JSONB access operators.
+func (r *Renderer) checkJSONBField(field types.Field) error {
+	if field.JSONBText != "" || field.JSONBPath != "" {
+		return render.NewUnsupportedFeatureError("mssql", "JSONB field access operators",
+			"use JSON_VALUE() or JSON_QUERY() instead")
+	}
+	return nil
+}
+
 // renderPaginationValue renders a pagination value.
 func (r *Renderer) renderPaginationValue(pv *types.PaginationValue, ctx *renderContext) string {
 	if pv.Param != nil {
@@ -671,6 +695,19 @@ func (r *Renderer) renderFieldExpression(expr types.FieldExpression, ctx *render
 			return "", err
 		}
 		result = windowStr
+	case expr.Binary != nil:
+		// Validate operator
+		if err := r.validateOperator(expr.Binary.Operator); err != nil {
+			return "", err
+		}
+		// Check for unsupported JSONB field
+		if err := r.checkJSONBField(expr.Binary.Field); err != nil {
+			return "", err
+		}
+		// Render binary expression
+		paramStr := ctx.addParam(expr.Binary.Param)
+		opStr := r.renderOperator(expr.Binary.Operator)
+		result = fmt.Sprintf("%s %s %s", r.renderField(expr.Binary.Field), opStr, paramStr)
 	case expr.Aggregate != "":
 		result = r.renderAggregateExpression(expr.Aggregate, expr.Field)
 		if expr.Filter != nil {
@@ -1167,7 +1204,8 @@ func (r *Renderer) renderWindowExpression(expr types.WindowExpression, ctx *rend
 
 	if len(expr.Window.OrderBy) > 0 {
 		var orderParts []string
-		for _, order := range expr.Window.OrderBy {
+		for i := range expr.Window.OrderBy {
+			order := &expr.Window.OrderBy[i]
 			var part string
 			if order.Operator != "" {
 				part = fmt.Sprintf("%s %s %s %s",

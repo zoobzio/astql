@@ -5,9 +5,24 @@ import (
 	"testing"
 
 	"github.com/zoobzio/astql"
+	"github.com/zoobzio/astql/mariadb"
+	"github.com/zoobzio/astql/mssql"
 	"github.com/zoobzio/astql/postgres"
+	"github.com/zoobzio/astql/sqlite"
 	"github.com/zoobzio/dbml"
 )
+
+func createMariaDBRenderer() *mariadb.Renderer {
+	return mariadb.New()
+}
+
+func createSQLiteRenderer() *sqlite.Renderer {
+	return sqlite.New()
+}
+
+func createMSSQLRenderer() *mssql.Renderer {
+	return mssql.New()
+}
 
 func createRenderTestInstance(t *testing.T) *astql.ASTQL {
 	t.Helper()
@@ -1569,4 +1584,399 @@ func TestRender_Select_InWithOtherConditions(t *testing.T) {
 	if len(result.RequiredParams) != 2 {
 		t.Errorf("Expected 2 params, got %d: %v", len(result.RequiredParams), result.RequiredParams)
 	}
+}
+
+// createJSONBTestInstance creates a test instance with JSONB columns.
+func createJSONBTestInstance(t *testing.T) *astql.ASTQL {
+	t.Helper()
+
+	project := dbml.NewProject("test")
+
+	documents := dbml.NewTable("documents")
+	documents.AddColumn(dbml.NewColumn("id", "bigint"))
+	documents.AddColumn(dbml.NewColumn("content", "text"))
+	documents.AddColumn(dbml.NewColumn("embedding", "vector(1536)"))
+	documents.AddColumn(dbml.NewColumn("metadata", "jsonb"))
+	project.AddTable(documents)
+
+	instance, err := astql.NewFromDBML(project)
+	if err != nil {
+		t.Fatalf("Failed to create instance: %v", err)
+	}
+	return instance
+}
+
+// Test BinaryExpr renders field <op> param AS alias.
+func TestRender_Select_BinaryExpr(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	result, err := astql.Select(instance.T("documents")).
+		Fields(instance.F("id"), instance.F("content")).
+		SelectExpr(astql.As(
+			astql.BinaryExpr(instance.F("embedding"), astql.VectorL2Distance, instance.P("query")),
+			"distance",
+		)).
+		OrderByExpr(instance.F("embedding"), astql.VectorL2Distance, instance.P("query"), astql.ASC).
+		Limit(10).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "id", "content", "embedding" <-> :query AS "distance" FROM "documents" ORDER BY "embedding" <-> :query ASC LIMIT 10`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+
+	if len(result.RequiredParams) != 1 || result.RequiredParams[0] != "query" {
+		t.Errorf("Expected params [query], got %v", result.RequiredParams)
+	}
+}
+
+// Test JSONBText renders field->>'key'.
+func TestRender_Select_JSONBText(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	statusField := instance.JSONBText(instance.F("metadata"), "status")
+	result, err := astql.Select(instance.T("documents")).
+		Fields(instance.F("id"), statusField).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "id", "metadata"->>'status' FROM "documents"`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+// Test JSONBPath renders field->'key'.
+func TestRender_Select_JSONBPath(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	tagsField := instance.JSONBPath(instance.F("metadata"), "tags")
+	result, err := astql.Select(instance.T("documents")).
+		Fields(instance.F("id"), tagsField).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "id", "metadata"->'tags' FROM "documents"`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+// Test JSONBPath with ArrayContains operator.
+func TestRender_Select_JSONBPath_ArrayContains(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	tagsField := instance.JSONBPath(instance.F("metadata"), "tags")
+	result, err := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		Where(instance.C(tagsField, astql.ArrayContains, instance.P("tags"))).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "id" FROM "documents" WHERE "metadata"->'tags' @> :tags`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+
+	if len(result.RequiredParams) != 1 || result.RequiredParams[0] != "tags" {
+		t.Errorf("Expected params [tags], got %v", result.RequiredParams)
+	}
+}
+
+// Test JSONBText in WHERE clause.
+func TestRender_Select_JSONBText_InWhere(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	statusField := instance.JSONBText(instance.F("metadata"), "status")
+	result, err := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		Where(instance.C(statusField, "=", instance.P("status"))).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "id" FROM "documents" WHERE "metadata"->>'status' = :status`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+// Test validateJSONBKey rejects invalid characters.
+func TestValidation_JSONBKey_InvalidChars(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	testCases := []struct {
+		name string
+		key  string
+	}{
+		{"SQL injection", "status'; DROP TABLE--"},
+		{"space", "my key"},
+		{"dot", "nested.key"},
+		{"special chars", "key@value"},
+		{"brackets", "key[0]"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r == nil {
+					t.Errorf("Expected panic for invalid JSONB key: %s", tc.key)
+				}
+			}()
+			instance.JSONBText(instance.F("metadata"), tc.key)
+		})
+	}
+}
+
+// Test validateJSONBKey accepts valid characters.
+func TestValidation_JSONBKey_ValidChars(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	testCases := []string{
+		"status",
+		"my_key",
+		"my-key",
+		"key123",
+		"CamelCase",
+		"UPPERCASE",
+	}
+
+	for _, key := range testCases {
+		t.Run(key, func(t *testing.T) {
+			// Should not panic
+			field := instance.JSONBText(instance.F("metadata"), key)
+			if field.JSONBText != key {
+				t.Errorf("Expected JSONBText to be %s, got %s", key, field.JSONBText)
+			}
+		})
+	}
+}
+
+// Test validateJSONBKey rejects empty key.
+func TestValidation_JSONBKey_Empty(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Expected panic for empty JSONB key")
+		}
+	}()
+	instance.JSONBText(instance.F("metadata"), "")
+}
+
+// Test non-postgres renderers error on JSONB fields.
+func TestRender_JSONB_NonPostgresError(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	// Import other renderers for this test
+	statusField := instance.JSONBText(instance.F("metadata"), "status")
+	query := astql.Select(instance.T("documents")).
+		Fields(instance.F("id"), statusField)
+
+	// Test with MariaDB renderer
+	t.Run("MariaDB", func(t *testing.T) {
+		mariadbRenderer := createMariaDBRenderer()
+		_, err := query.Render(mariadbRenderer)
+		if err == nil {
+			t.Error("Expected error for JSONB field with MariaDB renderer")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	// Test with SQLite renderer
+	t.Run("SQLite", func(t *testing.T) {
+		sqliteRenderer := createSQLiteRenderer()
+		_, err := query.Render(sqliteRenderer)
+		if err == nil {
+			t.Error("Expected error for JSONB field with SQLite renderer")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	// Test with MSSQL renderer
+	t.Run("MSSQL", func(t *testing.T) {
+		mssqlRenderer := createMSSQLRenderer()
+		_, err := query.Render(mssqlRenderer)
+		if err == nil {
+			t.Error("Expected error for JSONB field with MSSQL renderer")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+}
+
+// Test BinaryExpr renders on non-postgres providers (without JSONB fields).
+func TestRender_BinaryExpr_NonPostgres(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	// Build query with binary expression using a regular field (not JSONB)
+	query := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		SelectExpr(astql.As(
+			astql.BinaryExpr(instance.F("embedding"), astql.EQ, instance.P("value")),
+			"result",
+		))
+
+	t.Run("MariaDB", func(t *testing.T) {
+		result, err := query.Render(createMariaDBRenderer())
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
+		expected := "SELECT `id`, `embedding` = :value AS `result` FROM `documents`"
+		if result.SQL != expected {
+			t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+		}
+	})
+
+	t.Run("SQLite", func(t *testing.T) {
+		result, err := query.Render(createSQLiteRenderer())
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
+		expected := `SELECT "id", "embedding" = :value AS "result" FROM "documents"`
+		if result.SQL != expected {
+			t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+		}
+	})
+
+	t.Run("MSSQL", func(t *testing.T) {
+		result, err := query.Render(createMSSQLRenderer())
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
+		expected := `SELECT [id], [embedding] = :value AS [result] FROM [documents]`
+		if result.SQL != expected {
+			t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+		}
+	})
+}
+
+// Test BinaryExpr with JSONB field errors on non-postgres providers.
+func TestRender_BinaryExpr_JSONBField_NonPostgresError(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	// Build query with binary expression using a JSONB field
+	jsonbField := instance.JSONBText(instance.F("metadata"), "status")
+	query := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		SelectExpr(astql.As(
+			astql.BinaryExpr(jsonbField, astql.EQ, instance.P("value")),
+			"result",
+		))
+
+	t.Run("MariaDB", func(t *testing.T) {
+		_, err := query.Render(createMariaDBRenderer())
+		if err == nil {
+			t.Error("Expected error for JSONB field in binary expression with MariaDB")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("SQLite", func(t *testing.T) {
+		_, err := query.Render(createSQLiteRenderer())
+		if err == nil {
+			t.Error("Expected error for JSONB field in binary expression with SQLite")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+
+	t.Run("MSSQL", func(t *testing.T) {
+		_, err := query.Render(createMSSQLRenderer())
+		if err == nil {
+			t.Error("Expected error for JSONB field in binary expression with MSSQL")
+		}
+		if !strings.Contains(err.Error(), "JSONB") {
+			t.Errorf("Expected error to mention JSONB, got: %v", err)
+		}
+	})
+}
+
+// Test validateJSONBKey rejects invalid characters via JSONBPath.
+func TestValidation_JSONBPath_InvalidChars(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	testCases := []struct {
+		name string
+		key  string
+	}{
+		{"SQL injection", "tags'; DROP TABLE--"},
+		{"space", "my key"},
+		{"dot", "nested.key"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r == nil {
+					t.Errorf("Expected panic for invalid JSONB key: %s", tc.key)
+				}
+			}()
+			instance.JSONBPath(instance.F("metadata"), tc.key)
+		})
+	}
+}
+
+// Test validateJSONBKey rejects empty key via JSONBPath.
+func TestValidation_JSONBPath_Empty(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Expected panic for empty JSONB key")
+		}
+	}()
+	instance.JSONBPath(instance.F("metadata"), "")
+}
+
+// Test BinaryExpr with unsupported operator errors on non-postgres providers.
+func TestRender_BinaryExpr_UnsupportedOperator(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	// Build query with binary expression using a vector operator (unsupported on non-postgres)
+	query := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		SelectExpr(astql.As(
+			astql.BinaryExpr(instance.F("embedding"), astql.VectorL2Distance, instance.P("query")),
+			"distance",
+		))
+
+	t.Run("MariaDB", func(t *testing.T) {
+		_, err := query.Render(createMariaDBRenderer())
+		if err == nil {
+			t.Error("Expected error for unsupported vector operator with MariaDB")
+		}
+	})
+
+	t.Run("SQLite", func(t *testing.T) {
+		_, err := query.Render(createSQLiteRenderer())
+		if err == nil {
+			t.Error("Expected error for unsupported vector operator with SQLite")
+		}
+	})
+
+	t.Run("MSSQL", func(t *testing.T) {
+		_, err := query.Render(createMSSQLRenderer())
+		if err == nil {
+			t.Error("Expected error for unsupported vector operator with MSSQL")
+		}
+	})
 }

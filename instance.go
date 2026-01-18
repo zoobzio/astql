@@ -580,3 +580,48 @@ func (*ASTQL) ArrayContainedBy() types.Operator {
 func (*ASTQL) ArrayOverlap() types.Operator {
 	return types.ArrayOverlap
 }
+
+// validateJSONBKey validates that a JSONB key contains only safe characters.
+// Allowed: alphanumeric, underscore, hyphen.
+func validateJSONBKey(key string) error {
+	if key == "" {
+		return fmt.Errorf("JSONB key cannot be empty")
+	}
+	for i, ch := range key {
+		if !((ch >= 'a' && ch <= 'z') ||
+			(ch >= 'A' && ch <= 'Z') ||
+			(ch >= '0' && ch <= '9') ||
+			ch == '_' || ch == '-') {
+			return fmt.Errorf("invalid character '%c' at position %d in JSONB key '%s': only alphanumeric, underscore, and hyphen allowed", ch, i, key)
+		}
+	}
+	return nil
+}
+
+// JSONBText creates a field with JSONB text extraction (->>).
+// Renders as: field->>'key'
+// Example: JSONBText(metadata, "status") -> "metadata"->>'status'
+func (a *ASTQL) JSONBText(field types.Field, key string) types.Field {
+	if err := validateJSONBKey(key); err != nil {
+		panic(err)
+	}
+	return types.Field{
+		Name:      field.Name,
+		Table:     field.Table,
+		JSONBText: key,
+	}
+}
+
+// JSONBPath creates a field with JSONB path access (->).
+// Renders as: field->'key'
+// Example: JSONBPath(metadata, "tags") -> "metadata"->'tags'
+func (a *ASTQL) JSONBPath(field types.Field, key string) types.Field {
+	if err := validateJSONBKey(key); err != nil {
+		panic(err)
+	}
+	return types.Field{
+		Name:      field.Name,
+		Table:     field.Table,
+		JSONBPath: key,
+	}
+}

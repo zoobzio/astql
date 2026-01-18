@@ -165,18 +165,29 @@ func (r *Renderer) RenderCompound(query *types.CompoundQuery) (*types.QueryResul
 		queryIndex++
 	}
 
+	// Create context for final ORDER BY/LIMIT/OFFSET params
+	finalCtx := newRenderContext(makeParamCallback(""))
+
 	// Final ORDER BY
 	if len(query.Ordering) > 0 {
 		sql.WriteString(" ORDER BY ")
 		var orderParts []string
-		for _, order := range query.Ordering {
-			orderParts = append(orderParts, fmt.Sprintf("%s %s", r.renderField(order.Field), order.Direction))
+		for i := range query.Ordering {
+			order := &query.Ordering[i]
+			var part string
+			if order.Operator != "" {
+				part = fmt.Sprintf("%s %s %s %s",
+					r.renderField(order.Field),
+					r.renderOperator(order.Operator),
+					finalCtx.addParam(order.Param),
+					order.Direction)
+			} else {
+				part = fmt.Sprintf("%s %s", r.renderField(order.Field), order.Direction)
+			}
+			orderParts = append(orderParts, part)
 		}
 		sql.WriteString(strings.Join(orderParts, ", "))
 	}
-
-	// Create context for final LIMIT/OFFSET params
-	finalCtx := newRenderContext(makeParamCallback(""))
 
 	// Final LIMIT
 	if query.Limit != nil {
@@ -287,7 +298,8 @@ func (r *Renderer) renderSelect(ast *types.AST, sql *strings.Builder, ctx *rende
 	if len(ast.Ordering) > 0 {
 		sql.WriteString(" ORDER BY ")
 		var orderParts []string
-		for _, order := range ast.Ordering {
+		for i := range ast.Ordering {
+			order := &ast.Ordering[i]
 			var part string
 			if order.Operator != "" {
 				// Expression-based ordering: field <op> param direction
@@ -544,11 +556,23 @@ func (r *Renderer) renderTable(table types.Table) string {
 
 func (r *Renderer) renderField(field types.Field) string {
 	quotedName := r.quoteIdentifier(field.Name)
+	var base string
 	if field.Table != "" {
 		// Table aliases don't need quoting (single lowercase letter)
-		return fmt.Sprintf("%s.%s", field.Table, quotedName)
+		base = fmt.Sprintf("%s.%s", field.Table, quotedName)
+	} else {
+		base = quotedName
 	}
-	return quotedName
+
+	// Handle JSONB field access
+	if field.JSONBText != "" {
+		return fmt.Sprintf("%s->>'%s'", base, field.JSONBText)
+	}
+	if field.JSONBPath != "" {
+		return fmt.Sprintf("%s->'%s'", base, field.JSONBPath)
+	}
+
+	return base
 }
 
 // renderPaginationValue renders a LIMIT or OFFSET value, which can be
@@ -641,6 +665,11 @@ func (r *Renderer) renderFieldExpression(expr types.FieldExpression, ctx *render
 			return "", err
 		}
 		result = windowStr
+	case expr.Binary != nil:
+		// Render binary expression (field <op> param)
+		paramStr := ctx.addParam(expr.Binary.Param)
+		opStr := r.renderOperator(expr.Binary.Operator)
+		result = fmt.Sprintf("%s %s %s", r.renderField(expr.Binary.Field), opStr, paramStr)
 	case expr.Aggregate != "":
 		result = r.renderAggregateExpression(expr.Aggregate, expr.Field)
 		// Add FILTER clause if present
@@ -1083,7 +1112,8 @@ func (r *Renderer) renderWindowExpression(expr types.WindowExpression, ctx *rend
 	// ORDER BY
 	if len(expr.Window.OrderBy) > 0 {
 		var orderParts []string
-		for _, order := range expr.Window.OrderBy {
+		for i := range expr.Window.OrderBy {
+			order := &expr.Window.OrderBy[i]
 			var part string
 			if order.Operator != "" {
 				part = fmt.Sprintf("%s %s %s %s",

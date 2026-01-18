@@ -4,8 +4,10 @@ package types
 // This is exported from the internal package so providers can use it,
 // but external users cannot import this package.
 type Field struct {
-	Name  string // The field name (required)
-	Table string // Optional table/alias prefix
+	Name      string // The field name (required)
+	Table     string // Optional table/alias prefix
+	JSONBText string // Renders as field->>'key' (PostgreSQL JSONB text extraction)
+	JSONBPath string // Renders as field->'key' (PostgreSQL JSONB path access)
 }
 
 // TableValidator is a function that validates table names and aliases.
