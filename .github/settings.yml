@@ -1,5 +1,5 @@
 repository:
-  name: sentinel
+  name: astql
   description: Type-safe SQL query builder with DBML schema validation.
   homepage: https://github.com/zoobzio/astql
   has_wiki: true
