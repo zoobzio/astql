@@ -611,7 +611,7 @@ func (r *Renderer) renderField(field types.Field) string {
 
 // checkJSONBField returns an error if the field uses JSONB access operators.
 func (r *Renderer) checkJSONBField(field types.Field) error {
-	if field.JSONBText != "" || field.JSONBPath != "" {
+	if field.JSONBTextKey != nil || field.JSONBPathKey != nil {
 		return render.NewUnsupportedFeatureError("sqlite", "JSONB field access operators",
 			"use json_extract() instead")
 	}

@@ -607,7 +607,7 @@ func (r *Renderer) renderField(field types.Field) string {
 
 // checkJSONBField returns an error if the field uses JSONB access operators.
 func (r *Renderer) checkJSONBField(field types.Field) error {
-	if field.JSONBText != "" || field.JSONBPath != "" {
+	if field.JSONBTextKey != nil || field.JSONBPathKey != nil {
 		return render.NewUnsupportedFeatureError("mssql", "JSONB field access operators",
 			"use JSON_VALUE() or JSON_QUERY() instead")
 	}

@@ -1633,11 +1633,11 @@ func TestRender_Select_BinaryExpr(t *testing.T) {
 	}
 }
 
-// Test JSONBText renders field->>'key'.
+// Test JSONBText renders field->>:key_param (parameterized).
 func TestRender_Select_JSONBText(t *testing.T) {
 	instance := createJSONBTestInstance(t)
 
-	statusField := instance.JSONBText(instance.F("metadata"), "status")
+	statusField := instance.JSONBText(instance.F("metadata"), instance.P("status_key"))
 	result, err := astql.Select(instance.T("documents")).
 		Fields(instance.F("id"), statusField).
 		Render(postgres.New())
@@ -1645,17 +1645,21 @@ func TestRender_Select_JSONBText(t *testing.T) {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	expected := `SELECT "id", "metadata"->>'status' FROM "documents"`
+	expected := `SELECT "id", "metadata"->>:status_key FROM "documents"`
 	if result.SQL != expected {
 		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
 	}
+
+	if len(result.RequiredParams) != 1 || result.RequiredParams[0] != "status_key" {
+		t.Errorf("Expected params [status_key], got %v", result.RequiredParams)
+	}
 }
 
-// Test JSONBPath renders field->'key'.
+// Test JSONBPath renders field->:key_param (parameterized).
 func TestRender_Select_JSONBPath(t *testing.T) {
 	instance := createJSONBTestInstance(t)
 
-	tagsField := instance.JSONBPath(instance.F("metadata"), "tags")
+	tagsField := instance.JSONBPath(instance.F("metadata"), instance.P("tags_key"))
 	result, err := astql.Select(instance.T("documents")).
 		Fields(instance.F("id"), tagsField).
 		Render(postgres.New())
@@ -1663,9 +1667,13 @@ func TestRender_Select_JSONBPath(t *testing.T) {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	expected := `SELECT "id", "metadata"->'tags' FROM "documents"`
+	expected := `SELECT "id", "metadata"->:tags_key FROM "documents"`
 	if result.SQL != expected {
 		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+
+	if len(result.RequiredParams) != 1 || result.RequiredParams[0] != "tags_key" {
+		t.Errorf("Expected params [tags_key], got %v", result.RequiredParams)
 	}
 }
 
@@ -1673,22 +1681,22 @@ func TestRender_Select_JSONBPath(t *testing.T) {
 func TestRender_Select_JSONBPath_ArrayContains(t *testing.T) {
 	instance := createJSONBTestInstance(t)
 
-	tagsField := instance.JSONBPath(instance.F("metadata"), "tags")
+	tagsField := instance.JSONBPath(instance.F("metadata"), instance.P("tags_key"))
 	result, err := astql.Select(instance.T("documents")).
 		Fields(instance.F("id")).
-		Where(instance.C(tagsField, astql.ArrayContains, instance.P("tags"))).
+		Where(instance.C(tagsField, astql.ArrayContains, instance.P("tags_value"))).
 		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	expected := `SELECT "id" FROM "documents" WHERE "metadata"->'tags' @> :tags`
+	expected := `SELECT "id" FROM "documents" WHERE "metadata"->:tags_key @> :tags_value`
 	if result.SQL != expected {
 		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
 	}
 
-	if len(result.RequiredParams) != 1 || result.RequiredParams[0] != "tags" {
-		t.Errorf("Expected params [tags], got %v", result.RequiredParams)
+	if len(result.RequiredParams) != 2 {
+		t.Errorf("Expected 2 params, got %d: %v", len(result.RequiredParams), result.RequiredParams)
 	}
 }
 
@@ -1696,90 +1704,30 @@ func TestRender_Select_JSONBPath_ArrayContains(t *testing.T) {
 func TestRender_Select_JSONBText_InWhere(t *testing.T) {
 	instance := createJSONBTestInstance(t)
 
-	statusField := instance.JSONBText(instance.F("metadata"), "status")
+	statusField := instance.JSONBText(instance.F("metadata"), instance.P("status_key"))
 	result, err := astql.Select(instance.T("documents")).
 		Fields(instance.F("id")).
-		Where(instance.C(statusField, "=", instance.P("status"))).
+		Where(instance.C(statusField, "=", instance.P("status_value"))).
 		Render(postgres.New())
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	expected := `SELECT "id" FROM "documents" WHERE "metadata"->>'status' = :status`
+	expected := `SELECT "id" FROM "documents" WHERE "metadata"->>:status_key = :status_value`
 	if result.SQL != expected {
 		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
 	}
-}
 
-// Test validateJSONBKey rejects invalid characters.
-func TestValidation_JSONBKey_InvalidChars(t *testing.T) {
-	instance := createJSONBTestInstance(t)
-
-	testCases := []struct {
-		name string
-		key  string
-	}{
-		{"SQL injection", "status'; DROP TABLE--"},
-		{"space", "my key"},
-		{"dot", "nested.key"},
-		{"special chars", "key@value"},
-		{"brackets", "key[0]"},
+	if len(result.RequiredParams) != 2 {
+		t.Errorf("Expected 2 params, got %d: %v", len(result.RequiredParams), result.RequiredParams)
 	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			defer func() {
-				if r := recover(); r == nil {
-					t.Errorf("Expected panic for invalid JSONB key: %s", tc.key)
-				}
-			}()
-			instance.JSONBText(instance.F("metadata"), tc.key)
-		})
-	}
-}
-
-// Test validateJSONBKey accepts valid characters.
-func TestValidation_JSONBKey_ValidChars(t *testing.T) {
-	instance := createJSONBTestInstance(t)
-
-	testCases := []string{
-		"status",
-		"my_key",
-		"my-key",
-		"key123",
-		"CamelCase",
-		"UPPERCASE",
-	}
-
-	for _, key := range testCases {
-		t.Run(key, func(t *testing.T) {
-			// Should not panic
-			field := instance.JSONBText(instance.F("metadata"), key)
-			if field.JSONBText != key {
-				t.Errorf("Expected JSONBText to be %s, got %s", key, field.JSONBText)
-			}
-		})
-	}
-}
-
-// Test validateJSONBKey rejects empty key.
-func TestValidation_JSONBKey_Empty(t *testing.T) {
-	instance := createJSONBTestInstance(t)
-
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("Expected panic for empty JSONB key")
-		}
-	}()
-	instance.JSONBText(instance.F("metadata"), "")
 }
 
 // Test non-postgres renderers error on JSONB fields.
 func TestRender_JSONB_NonPostgresError(t *testing.T) {
 	instance := createJSONBTestInstance(t)
 
-	// Import other renderers for this test
-	statusField := instance.JSONBText(instance.F("metadata"), "status")
+	statusField := instance.JSONBText(instance.F("metadata"), instance.P("status_key"))
 	query := astql.Select(instance.T("documents")).
 		Fields(instance.F("id"), statusField)
 
@@ -1871,7 +1819,7 @@ func TestRender_BinaryExpr_JSONBField_NonPostgresError(t *testing.T) {
 	instance := createJSONBTestInstance(t)
 
 	// Build query with binary expression using a JSONB field
-	jsonbField := instance.JSONBText(instance.F("metadata"), "status")
+	jsonbField := instance.JSONBText(instance.F("metadata"), instance.P("status_key"))
 	query := astql.Select(instance.T("documents")).
 		Fields(instance.F("id")).
 		SelectExpr(astql.As(
@@ -1908,43 +1856,6 @@ func TestRender_BinaryExpr_JSONBField_NonPostgresError(t *testing.T) {
 			t.Errorf("Expected error to mention JSONB, got: %v", err)
 		}
 	})
-}
-
-// Test validateJSONBKey rejects invalid characters via JSONBPath.
-func TestValidation_JSONBPath_InvalidChars(t *testing.T) {
-	instance := createJSONBTestInstance(t)
-
-	testCases := []struct {
-		name string
-		key  string
-	}{
-		{"SQL injection", "tags'; DROP TABLE--"},
-		{"space", "my key"},
-		{"dot", "nested.key"},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			defer func() {
-				if r := recover(); r == nil {
-					t.Errorf("Expected panic for invalid JSONB key: %s", tc.key)
-				}
-			}()
-			instance.JSONBPath(instance.F("metadata"), tc.key)
-		})
-	}
-}
-
-// Test validateJSONBKey rejects empty key via JSONBPath.
-func TestValidation_JSONBPath_Empty(t *testing.T) {
-	instance := createJSONBTestInstance(t)
-
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("Expected panic for empty JSONB key")
-		}
-	}()
-	instance.JSONBPath(instance.F("metadata"), "")
 }
 
 // Test BinaryExpr with unsupported operator errors on non-postgres providers.

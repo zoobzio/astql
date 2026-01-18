@@ -618,7 +618,7 @@ func (r *Renderer) renderField(field types.Field) string {
 
 // checkJSONBField returns an error if the field uses JSONB access operators.
 func (r *Renderer) checkJSONBField(field types.Field) error {
-	if field.JSONBText != "" || field.JSONBPath != "" {
+	if field.JSONBTextKey != nil || field.JSONBPathKey != nil {
 		return render.NewUnsupportedFeatureError("mariadb", "JSONB field access operators",
 			"use JSON_EXTRACT() or JSON_UNQUOTE(JSON_EXTRACT()) instead")
 	}
