@@ -165,18 +165,33 @@ func (r *Renderer) RenderCompound(query *types.CompoundQuery) (*types.QueryResul
 		queryIndex++
 	}
 
+	// Create context for final ORDER BY/LIMIT/OFFSET params
+	finalCtx := newRenderContext(makeParamCallback(""))
+
 	// Final ORDER BY
 	if len(query.Ordering) > 0 {
 		sql.WriteString(" ORDER BY ")
 		var orderParts []string
-		for _, order := range query.Ordering {
-			orderParts = append(orderParts, fmt.Sprintf("%s %s", r.renderField(order.Field), order.Direction))
+		for i := range query.Ordering {
+			order := &query.Ordering[i]
+			var part string
+			if order.Operator != "" {
+				part = fmt.Sprintf("%s %s %s %s",
+					r.renderFieldCtx(order.Field, finalCtx),
+					r.renderOperator(order.Operator),
+					finalCtx.addParam(order.Param),
+					order.Direction)
+			} else {
+				part = fmt.Sprintf("%s %s", r.renderFieldCtx(order.Field, finalCtx), order.Direction)
+			}
+			// Append NULLS FIRST/LAST if specified
+			if order.Nulls != "" {
+				part += " " + string(order.Nulls)
+			}
+			orderParts = append(orderParts, part)
 		}
 		sql.WriteString(strings.Join(orderParts, ", "))
 	}
-
-	// Create context for final LIMIT/OFFSET params
-	finalCtx := newRenderContext(makeParamCallback(""))
 
 	// Final LIMIT
 	if query.Limit != nil {
@@ -203,7 +218,7 @@ func (r *Renderer) renderSelect(ast *types.AST, sql *strings.Builder, ctx *rende
 		sql.WriteString("DISTINCT ON (")
 		var distinctFields []string
 		for _, field := range ast.DistinctOn {
-			distinctFields = append(distinctFields, r.renderField(field))
+			distinctFields = append(distinctFields, r.renderFieldCtx(field, ctx))
 		}
 		sql.WriteString(strings.Join(distinctFields, ", "))
 		sql.WriteString(") ")
@@ -219,7 +234,7 @@ func (r *Renderer) renderSelect(ast *types.AST, sql *strings.Builder, ctx *rende
 
 		// Regular fields
 		for _, field := range ast.Fields {
-			selections = append(selections, r.renderField(field))
+			selections = append(selections, r.renderFieldCtx(field, ctx))
 		}
 
 		// Field expressions (aggregates, CASE, etc)
@@ -265,7 +280,7 @@ func (r *Renderer) renderSelect(ast *types.AST, sql *strings.Builder, ctx *rende
 		sql.WriteString(" GROUP BY ")
 		var groupFields []string
 		for _, field := range ast.GroupBy {
-			groupFields = append(groupFields, r.renderField(field))
+			groupFields = append(groupFields, r.renderFieldCtx(field, ctx))
 		}
 		sql.WriteString(strings.Join(groupFields, ", "))
 	}
@@ -287,18 +302,19 @@ func (r *Renderer) renderSelect(ast *types.AST, sql *strings.Builder, ctx *rende
 	if len(ast.Ordering) > 0 {
 		sql.WriteString(" ORDER BY ")
 		var orderParts []string
-		for _, order := range ast.Ordering {
+		for i := range ast.Ordering {
+			order := &ast.Ordering[i]
 			var part string
 			if order.Operator != "" {
 				// Expression-based ordering: field <op> param direction
 				part = fmt.Sprintf("%s %s %s %s",
-					r.renderField(order.Field),
+					r.renderFieldCtx(order.Field, ctx),
 					r.renderOperator(order.Operator),
 					ctx.addParam(order.Param),
 					order.Direction)
 			} else {
 				// Simple field ordering
-				part = fmt.Sprintf("%s %s", r.renderField(order.Field), order.Direction)
+				part = fmt.Sprintf("%s %s", r.renderFieldCtx(order.Field, ctx), order.Direction)
 			}
 			// Append NULLS FIRST/LAST if specified
 			if order.Nulls != "" {
@@ -411,8 +427,9 @@ func (r *Renderer) renderInsert(ast *types.AST, sql *strings.Builder, addParam f
 	if len(ast.Returning) > 0 {
 		sql.WriteString(" RETURNING ")
 		var fields []string
+		returningCtx := newRenderContext(addParam)
 		for _, field := range ast.Returning {
-			fields = append(fields, r.renderField(field))
+			fields = append(fields, r.renderFieldCtx(field, returningCtx))
 		}
 		sql.WriteString(strings.Join(fields, ", "))
 	}
@@ -458,8 +475,9 @@ func (r *Renderer) renderUpdate(ast *types.AST, sql *strings.Builder, addParam f
 	if len(ast.Returning) > 0 {
 		sql.WriteString(" RETURNING ")
 		var fields []string
+		returningCtx := newRenderContext(addParam)
 		for _, field := range ast.Returning {
-			fields = append(fields, r.renderField(field))
+			fields = append(fields, r.renderFieldCtx(field, returningCtx))
 		}
 		sql.WriteString(strings.Join(fields, ", "))
 	}
@@ -484,8 +502,9 @@ func (r *Renderer) renderDelete(ast *types.AST, sql *strings.Builder, addParam f
 	if len(ast.Returning) > 0 {
 		sql.WriteString(" RETURNING ")
 		var fields []string
+		returningCtx := newRenderContext(addParam)
 		for _, field := range ast.Returning {
-			fields = append(fields, r.renderField(field))
+			fields = append(fields, r.renderFieldCtx(field, returningCtx))
 		}
 		sql.WriteString(strings.Join(fields, ", "))
 	}
@@ -542,13 +561,39 @@ func (r *Renderer) renderTable(table types.Table) string {
 	return quotedName
 }
 
-func (r *Renderer) renderField(field types.Field) string {
+// renderFieldCtx renders a field with optional context for JSONB param registration.
+// If ctx is nil and field has JSONB access, panics (programmer error).
+func (r *Renderer) renderFieldCtx(field types.Field, ctx *renderContext) string {
 	quotedName := r.quoteIdentifier(field.Name)
+	var base string
 	if field.Table != "" {
 		// Table aliases don't need quoting (single lowercase letter)
-		return fmt.Sprintf("%s.%s", field.Table, quotedName)
+		base = fmt.Sprintf("%s.%s", field.Table, quotedName)
+	} else {
+		base = quotedName
 	}
-	return quotedName
+
+	// Handle JSONB field access with parameterized keys
+	if field.JSONBTextKey != nil {
+		if ctx == nil {
+			panic("JSONB field access requires render context")
+		}
+		return fmt.Sprintf("%s->>%s", base, ctx.addParam(*field.JSONBTextKey))
+	}
+	if field.JSONBPathKey != nil {
+		if ctx == nil {
+			panic("JSONB field access requires render context")
+		}
+		return fmt.Sprintf("%s->%s", base, ctx.addParam(*field.JSONBPathKey))
+	}
+
+	return base
+}
+
+// renderField renders a simple field (no JSONB access).
+// For fields with JSONB access, use renderFieldCtx instead.
+func (r *Renderer) renderField(field types.Field) string {
+	return r.renderFieldCtx(field, nil)
 }
 
 // renderPaginationValue renders a LIMIT or OFFSET value, which can be
@@ -582,6 +627,28 @@ func (r *Renderer) renderAggregateExpression(aggregate types.AggregateFunc, fiel
 		return fmt.Sprintf("MAX(%s)", r.renderField(field))
 	default:
 		return r.renderField(field) // Fallback
+	}
+}
+
+func (r *Renderer) renderAggregateExpressionCtx(aggregate types.AggregateFunc, field types.Field, ctx *renderContext) string {
+	switch aggregate {
+	case types.AggCountField:
+		if field.Name == "" {
+			return countStarSQL
+		}
+		return fmt.Sprintf("COUNT(%s)", r.renderFieldCtx(field, ctx))
+	case types.AggCountDistinct:
+		return fmt.Sprintf("COUNT(DISTINCT %s)", r.renderFieldCtx(field, ctx))
+	case types.AggSum:
+		return fmt.Sprintf("SUM(%s)", r.renderFieldCtx(field, ctx))
+	case types.AggAvg:
+		return fmt.Sprintf("AVG(%s)", r.renderFieldCtx(field, ctx))
+	case types.AggMin:
+		return fmt.Sprintf("MIN(%s)", r.renderFieldCtx(field, ctx))
+	case types.AggMax:
+		return fmt.Sprintf("MAX(%s)", r.renderFieldCtx(field, ctx))
+	default:
+		return r.renderFieldCtx(field, ctx) // Fallback
 	}
 }
 
@@ -633,7 +700,7 @@ func (r *Renderer) renderFieldExpression(expr types.FieldExpression, ctx *render
 		result = dateStr
 	case expr.Cast != nil:
 		// Render type cast
-		result = fmt.Sprintf("CAST(%s AS %s)", r.renderField(expr.Cast.Field), string(expr.Cast.CastType))
+		result = fmt.Sprintf("CAST(%s AS %s)", r.renderFieldCtx(expr.Cast.Field, ctx), string(expr.Cast.CastType))
 	case expr.Window != nil:
 		// Render window function
 		windowStr, err := r.renderWindowExpression(*expr.Window, ctx)
@@ -641,8 +708,13 @@ func (r *Renderer) renderFieldExpression(expr types.FieldExpression, ctx *render
 			return "", err
 		}
 		result = windowStr
+	case expr.Binary != nil:
+		// Render binary expression (field <op> param)
+		paramStr := ctx.addParam(expr.Binary.Param)
+		opStr := r.renderOperator(expr.Binary.Operator)
+		result = fmt.Sprintf("%s %s %s", r.renderFieldCtx(expr.Binary.Field, ctx), opStr, paramStr)
 	case expr.Aggregate != "":
-		result = r.renderAggregateExpression(expr.Aggregate, expr.Field)
+		result = r.renderAggregateExpressionCtx(expr.Aggregate, expr.Field, ctx)
 		// Add FILTER clause if present
 		if expr.Filter != nil {
 			var filterSQL strings.Builder
@@ -654,7 +726,7 @@ func (r *Renderer) renderFieldExpression(expr types.FieldExpression, ctx *render
 			result += filterSQL.String()
 		}
 	default:
-		result = r.renderField(expr.Field)
+		result = r.renderFieldCtx(expr.Field, ctx)
 	}
 
 	if expr.Alias != "" {
@@ -667,7 +739,7 @@ func (r *Renderer) renderFieldExpression(expr types.FieldExpression, ctx *render
 func (r *Renderer) renderCondition(cond types.ConditionItem, sql *strings.Builder, ctx *renderContext) error {
 	switch c := cond.(type) {
 	case types.Condition:
-		sql.WriteString(r.renderSimpleCondition(c, ctx.addParam))
+		sql.WriteString(r.renderSimpleCondition(c, ctx))
 	case types.ConditionGroup:
 		// Skip empty condition groups
 		if len(c.Conditions) == 0 {
@@ -685,25 +757,25 @@ func (r *Renderer) renderCondition(cond types.ConditionItem, sql *strings.Builde
 		sql.WriteString(")")
 	case types.FieldComparison:
 		fmt.Fprintf(sql, "%s %s %s",
-			r.renderField(c.LeftField),
+			r.renderFieldCtx(c.LeftField, ctx),
 			r.renderOperator(c.Operator),
-			r.renderField(c.RightField))
+			r.renderFieldCtx(c.RightField, ctx))
 	case types.SubqueryCondition:
 		if err := r.renderSubqueryCondition(c, sql, ctx); err != nil {
 			return err
 		}
 	case types.AggregateCondition:
-		sql.WriteString(r.renderAggregateCondition(c, ctx.addParam))
+		sql.WriteString(r.renderAggregateCondition(c, ctx))
 	case types.BetweenCondition:
-		sql.WriteString(r.renderBetweenCondition(c, ctx.addParam))
+		sql.WriteString(r.renderBetweenCondition(c, ctx))
 	default:
 		return fmt.Errorf("unknown condition type: %T", c)
 	}
 	return nil
 }
 
-func (r *Renderer) renderSimpleCondition(cond types.Condition, addParam func(types.Param) string) string {
-	field := r.renderField(cond.Field)
+func (r *Renderer) renderSimpleCondition(cond types.Condition, ctx *renderContext) string {
+	field := r.renderFieldCtx(cond.Field, ctx)
 	op := r.renderOperator(cond.Operator)
 
 	switch cond.Operator {
@@ -713,17 +785,17 @@ func (r *Renderer) renderSimpleCondition(cond types.Condition, addParam func(typ
 		return fmt.Sprintf("%s IS NOT NULL", field)
 	case types.IN:
 		// PostgreSQL: field = ANY(:param) for array parameters
-		return fmt.Sprintf("%s = ANY(%s)", field, addParam(cond.Value))
+		return fmt.Sprintf("%s = ANY(%s)", field, ctx.addParam(cond.Value))
 	case types.NotIn:
 		// PostgreSQL: field != ALL(:param) for array parameters
-		return fmt.Sprintf("%s != ALL(%s)", field, addParam(cond.Value))
+		return fmt.Sprintf("%s != ALL(%s)", field, ctx.addParam(cond.Value))
 	default:
-		return fmt.Sprintf("%s %s %s", field, op, addParam(cond.Value))
+		return fmt.Sprintf("%s %s %s", field, op, ctx.addParam(cond.Value))
 	}
 }
 
 // Examples: COUNT(*) > :min_count, SUM("amount") >= :threshold.
-func (r *Renderer) renderAggregateCondition(cond types.AggregateCondition, addParam func(types.Param) string) string {
+func (r *Renderer) renderAggregateCondition(cond types.AggregateCondition, ctx *renderContext) string {
 	var aggExpr string
 
 	switch cond.Func {
@@ -731,53 +803,53 @@ func (r *Renderer) renderAggregateCondition(cond types.AggregateCondition, addPa
 		if cond.Field == nil {
 			aggExpr = countStarSQL
 		} else {
-			aggExpr = fmt.Sprintf("COUNT(%s)", r.renderField(*cond.Field))
+			aggExpr = fmt.Sprintf("COUNT(%s)", r.renderFieldCtx(*cond.Field, ctx))
 		}
 	case types.AggCountDistinct:
 		if cond.Field == nil {
 			aggExpr = countStarSQL // COUNT DISTINCT without field falls back to COUNT(*)
 		} else {
-			aggExpr = fmt.Sprintf("COUNT(DISTINCT %s)", r.renderField(*cond.Field))
+			aggExpr = fmt.Sprintf("COUNT(DISTINCT %s)", r.renderFieldCtx(*cond.Field, ctx))
 		}
 	case types.AggSum:
 		if cond.Field == nil {
 			aggExpr = "SUM(*)" // Invalid but let DB handle it
 		} else {
-			aggExpr = fmt.Sprintf("SUM(%s)", r.renderField(*cond.Field))
+			aggExpr = fmt.Sprintf("SUM(%s)", r.renderFieldCtx(*cond.Field, ctx))
 		}
 	case types.AggAvg:
 		if cond.Field == nil {
 			aggExpr = "AVG(*)"
 		} else {
-			aggExpr = fmt.Sprintf("AVG(%s)", r.renderField(*cond.Field))
+			aggExpr = fmt.Sprintf("AVG(%s)", r.renderFieldCtx(*cond.Field, ctx))
 		}
 	case types.AggMin:
 		if cond.Field == nil {
 			aggExpr = "MIN(*)"
 		} else {
-			aggExpr = fmt.Sprintf("MIN(%s)", r.renderField(*cond.Field))
+			aggExpr = fmt.Sprintf("MIN(%s)", r.renderFieldCtx(*cond.Field, ctx))
 		}
 	case types.AggMax:
 		if cond.Field == nil {
 			aggExpr = "MAX(*)"
 		} else {
-			aggExpr = fmt.Sprintf("MAX(%s)", r.renderField(*cond.Field))
+			aggExpr = fmt.Sprintf("MAX(%s)", r.renderFieldCtx(*cond.Field, ctx))
 		}
 	default:
 		aggExpr = "UNKNOWN_AGG(*)"
 	}
 
-	return fmt.Sprintf("%s %s %s", aggExpr, r.renderOperator(cond.Operator), addParam(cond.Value))
+	return fmt.Sprintf("%s %s %s", aggExpr, r.renderOperator(cond.Operator), ctx.addParam(cond.Value))
 }
 
 // renderBetweenCondition renders a BETWEEN condition.
-func (r *Renderer) renderBetweenCondition(cond types.BetweenCondition, addParam func(types.Param) string) string {
-	field := r.renderField(cond.Field)
+func (r *Renderer) renderBetweenCondition(cond types.BetweenCondition, ctx *renderContext) string {
+	field := r.renderFieldCtx(cond.Field, ctx)
 	op := "BETWEEN"
 	if cond.Negated {
 		op = "NOT BETWEEN"
 	}
-	return fmt.Sprintf("%s %s %s AND %s", field, op, addParam(cond.Low), addParam(cond.High))
+	return fmt.Sprintf("%s %s %s AND %s", field, op, ctx.addParam(cond.Low), ctx.addParam(cond.High))
 }
 
 func (r *Renderer) renderSubqueryCondition(cond types.SubqueryCondition, sql *strings.Builder, ctx *renderContext) error {
@@ -791,7 +863,7 @@ func (r *Renderer) renderSubqueryCondition(cond types.SubqueryCondition, sql *st
 		if cond.Field == nil {
 			return fmt.Errorf("operator %s requires a field", cond.Operator)
 		}
-		sql.WriteString(r.renderField(*cond.Field))
+		sql.WriteString(r.renderFieldCtx(*cond.Field, ctx))
 		sql.WriteString(" ")
 		sql.WriteString(string(cond.Operator))
 		sql.WriteString(" ")
@@ -1083,7 +1155,8 @@ func (r *Renderer) renderWindowExpression(expr types.WindowExpression, ctx *rend
 	// ORDER BY
 	if len(expr.Window.OrderBy) > 0 {
 		var orderParts []string
-		for _, order := range expr.Window.OrderBy {
+		for i := range expr.Window.OrderBy {
+			order := &expr.Window.OrderBy[i]
 			var part string
 			if order.Operator != "" {
 				part = fmt.Sprintf("%s %s %s %s",

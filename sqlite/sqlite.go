@@ -167,17 +167,28 @@ func (r *Renderer) RenderCompound(query *types.CompoundQuery) (*types.QueryResul
 		queryIndex++
 	}
 
+	// Create context for final ORDER BY/LIMIT/OFFSET params
+	finalCtx := newRenderContext(makeParamCallback(""))
+
 	if len(query.Ordering) > 0 {
 		sql.WriteString(" ORDER BY ")
 		var orderParts []string
-		for _, order := range query.Ordering {
-			orderParts = append(orderParts, fmt.Sprintf("%s %s", r.renderField(order.Field), order.Direction))
+		for i := range query.Ordering {
+			order := &query.Ordering[i]
+			var part string
+			if order.Operator != "" {
+				part = fmt.Sprintf("%s %s %s %s",
+					r.renderField(order.Field),
+					r.renderOperator(order.Operator),
+					finalCtx.addParam(order.Param),
+					order.Direction)
+			} else {
+				part = fmt.Sprintf("%s %s", r.renderField(order.Field), order.Direction)
+			}
+			orderParts = append(orderParts, part)
 		}
 		sql.WriteString(strings.Join(orderParts, ", "))
 	}
-
-	// Create context for final LIMIT/OFFSET params
-	finalCtx := newRenderContext(makeParamCallback(""))
 
 	if query.Limit != nil {
 		sql.WriteString(" LIMIT ")
@@ -207,7 +218,52 @@ func (r *Renderer) validateAST(ast *types.AST) error {
 			"SQLite uses database-level locking")
 	}
 
-	// Check for unsupported operators in conditions
+	// Check for JSONB fields in all field locations
+	for _, field := range ast.Fields {
+		if err := r.checkJSONBField(field); err != nil {
+			return err
+		}
+	}
+
+	for i := range ast.FieldExpressions {
+		if err := r.validateFieldExpression(&ast.FieldExpressions[i]); err != nil {
+			return err
+		}
+	}
+
+	for _, field := range ast.GroupBy {
+		if err := r.checkJSONBField(field); err != nil {
+			return err
+		}
+	}
+
+	for i := range ast.Ordering {
+		if err := r.checkJSONBField(ast.Ordering[i].Field); err != nil {
+			return err
+		}
+	}
+
+	for _, field := range ast.Returning {
+		if err := r.checkJSONBField(field); err != nil {
+			return err
+		}
+	}
+
+	for field := range ast.Updates {
+		if err := r.checkJSONBField(field); err != nil {
+			return err
+		}
+	}
+
+	for _, valueSet := range ast.Values {
+		for field := range valueSet {
+			if err := r.checkJSONBField(field); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Check for unsupported operators and JSONB in conditions
 	if ast.WhereClause != nil {
 		if err := r.validateCondition(ast.WhereClause); err != nil {
 			return err
@@ -229,8 +285,8 @@ func (r *Renderer) validateAST(ast *types.AST) error {
 	}
 
 	// Check for unsupported operators in ORDER BY expressions
-	for _, order := range ast.Ordering {
-		if err := r.validateOperator(order.Operator); err != nil {
+	for i := range ast.Ordering {
+		if err := r.validateOperator(ast.Ordering[i].Operator); err != nil {
 			return err
 		}
 	}
@@ -238,10 +294,75 @@ func (r *Renderer) validateAST(ast *types.AST) error {
 	return nil
 }
 
-// validateCondition recursively checks conditions for unsupported operators.
+// validateFieldExpression validates a field expression for JSONB fields.
+func (r *Renderer) validateFieldExpression(expr *types.FieldExpression) error {
+	if err := r.checkJSONBField(expr.Field); err != nil {
+		return err
+	}
+
+	if expr.Binary != nil {
+		if err := r.checkJSONBField(expr.Binary.Field); err != nil {
+			return err
+		}
+	}
+
+	if expr.Math != nil {
+		if err := r.checkJSONBField(expr.Math.Field); err != nil {
+			return err
+		}
+	}
+
+	if expr.String != nil {
+		if err := r.checkJSONBField(expr.String.Field); err != nil {
+			return err
+		}
+		for _, f := range expr.String.Fields {
+			if err := r.checkJSONBField(f); err != nil {
+				return err
+			}
+		}
+	}
+
+	if expr.Date != nil && expr.Date.Field != nil {
+		if err := r.checkJSONBField(*expr.Date.Field); err != nil {
+			return err
+		}
+	}
+
+	if expr.Cast != nil {
+		if err := r.checkJSONBField(expr.Cast.Field); err != nil {
+			return err
+		}
+	}
+
+	if expr.Window != nil {
+		if expr.Window.Field != nil {
+			if err := r.checkJSONBField(*expr.Window.Field); err != nil {
+				return err
+			}
+		}
+		for _, f := range expr.Window.Window.PartitionBy {
+			if err := r.checkJSONBField(f); err != nil {
+				return err
+			}
+		}
+		for i := range expr.Window.Window.OrderBy {
+			if err := r.checkJSONBField(expr.Window.Window.OrderBy[i].Field); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateCondition recursively checks conditions for unsupported operators and JSONB fields.
 func (r *Renderer) validateCondition(cond types.ConditionItem) error {
 	switch c := cond.(type) {
 	case types.Condition:
+		if err := r.checkJSONBField(c.Field); err != nil {
+			return err
+		}
 		return r.validateOperator(c.Operator)
 	case types.ConditionGroup:
 		for _, sub := range c.Conditions {
@@ -250,8 +371,19 @@ func (r *Renderer) validateCondition(cond types.ConditionItem) error {
 			}
 		}
 	case types.FieldComparison:
+		if err := r.checkJSONBField(c.LeftField); err != nil {
+			return err
+		}
+		if err := r.checkJSONBField(c.RightField); err != nil {
+			return err
+		}
 		return r.validateOperator(c.Operator)
 	case types.SubqueryCondition:
+		if c.Field != nil {
+			if err := r.checkJSONBField(*c.Field); err != nil {
+				return err
+			}
+		}
 		if err := r.validateOperator(c.Operator); err != nil {
 			return err
 		}
@@ -261,7 +393,16 @@ func (r *Renderer) validateCondition(cond types.ConditionItem) error {
 			}
 		}
 	case types.AggregateCondition:
+		if c.Field != nil {
+			if err := r.checkJSONBField(*c.Field); err != nil {
+				return err
+			}
+		}
 		return r.validateOperator(c.Operator)
+	case types.BetweenCondition:
+		if err := r.checkJSONBField(c.Field); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -301,6 +442,9 @@ func (r *Renderer) renderSelect(ast *types.AST, sql *strings.Builder, ctx *rende
 		var selections []string
 
 		for _, field := range ast.Fields {
+			if err := r.checkJSONBField(field); err != nil {
+				return err
+			}
 			selections = append(selections, r.renderField(field))
 		}
 
@@ -362,7 +506,8 @@ func (r *Renderer) renderSelect(ast *types.AST, sql *strings.Builder, ctx *rende
 	if len(ast.Ordering) > 0 {
 		sql.WriteString(" ORDER BY ")
 		var orderParts []string
-		for _, order := range ast.Ordering {
+		for i := range ast.Ordering {
+			order := &ast.Ordering[i]
 			var part string
 			if order.Operator != "" {
 				part = fmt.Sprintf("%s %s %s %s",
@@ -594,6 +739,15 @@ func (r *Renderer) renderField(field types.Field) string {
 	return quotedName
 }
 
+// checkJSONBField returns an error if the field uses JSONB access operators.
+func (r *Renderer) checkJSONBField(field types.Field) error {
+	if field.JSONBTextKey != nil || field.JSONBPathKey != nil {
+		return render.NewUnsupportedFeatureError("sqlite", "JSONB field access operators",
+			"use json_extract() instead")
+	}
+	return nil
+}
+
 // renderPaginationValue renders a LIMIT or OFFSET value, which can be
 // either a static integer or a parameterized value.
 func (r *Renderer) renderPaginationValue(pv *types.PaginationValue, ctx *renderContext) string {
@@ -676,6 +830,19 @@ func (r *Renderer) renderFieldExpression(expr types.FieldExpression, ctx *render
 			return "", err
 		}
 		result = windowStr
+	case expr.Binary != nil:
+		// Validate operator
+		if err := r.validateOperator(expr.Binary.Operator); err != nil {
+			return "", err
+		}
+		// Check for unsupported JSONB field
+		if err := r.checkJSONBField(expr.Binary.Field); err != nil {
+			return "", err
+		}
+		// Render binary expression
+		paramStr := ctx.addParam(expr.Binary.Param)
+		opStr := r.renderOperator(expr.Binary.Operator)
+		result = fmt.Sprintf("%s %s %s", r.renderField(expr.Binary.Field), opStr, paramStr)
 	case expr.Aggregate != "":
 		result = r.renderAggregateExpression(expr.Aggregate, expr.Field)
 		if expr.Filter != nil {
@@ -1177,7 +1344,8 @@ func (r *Renderer) renderWindowExpression(expr types.WindowExpression, ctx *rend
 
 	if len(expr.Window.OrderBy) > 0 {
 		var orderParts []string
-		for _, order := range expr.Window.OrderBy {
+		for i := range expr.Window.OrderBy {
+			order := &expr.Window.OrderBy[i]
 			var part string
 			if order.Operator != "" {
 				part = fmt.Sprintf("%s %s %s %s",

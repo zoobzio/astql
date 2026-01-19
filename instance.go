@@ -580,3 +580,25 @@ func (*ASTQL) ArrayContainedBy() types.Operator {
 func (*ASTQL) ArrayOverlap() types.Operator {
 	return types.ArrayOverlap
 }
+
+// JSONBText creates a field with JSONB text extraction (->>).
+// The key is parameterized for safety - renders as: field->>:key_param
+// Example: JSONBText(metadata, P("status_key")) -> "metadata"->>:status_key
+func (a *ASTQL) JSONBText(field types.Field, key types.Param) types.Field {
+	return types.Field{
+		Name:         field.Name,
+		Table:        field.Table,
+		JSONBTextKey: &key,
+	}
+}
+
+// JSONBPath creates a field with JSONB path access (->).
+// The key is parameterized for safety - renders as: field->:key_param
+// Example: JSONBPath(metadata, P("tags_key")) -> "metadata"->:tags_key
+func (a *ASTQL) JSONBPath(field types.Field, key types.Param) types.Field {
+	return types.Field{
+		Name:         field.Name,
+		Table:        field.Table,
+		JSONBPathKey: &key,
+	}
+}

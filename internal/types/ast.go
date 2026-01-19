@@ -116,7 +116,16 @@ type FieldExpression struct {
 	Date      *DateExpression     // For date/time functions
 	Cast      *CastExpression     // For type casting
 	Window    *WindowExpression   // For window functions
+	Binary    *BinaryExpression   // For field <op> param expressions (e.g., vector distance)
 	Alias     string
+}
+
+// BinaryExpression represents a binary operation between a field and a parameter.
+// Used for expressions like vector distance calculations: field <-> :param
+type BinaryExpression struct {
+	Field    Field
+	Operator Operator
+	Param    Param
 }
 
 // CaseExpression represents a SQL CASE expression.

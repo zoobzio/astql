@@ -147,6 +147,10 @@ type AggregateCondition = types.AggregateCondition
 // BetweenCondition represents a BETWEEN condition with two bounds.
 type BetweenCondition = types.BetweenCondition
 
+// BinaryExpression represents a binary operation between a field and a parameter.
+// Used for expressions like vector distance calculations: field <-> :param
+type BinaryExpression = types.BinaryExpression
+
 // AggregateFunc represents SQL aggregate functions.
 type AggregateFunc = types.AggregateFunc
 
