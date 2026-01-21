@@ -1633,6 +1633,85 @@ func TestRender_Select_BinaryExpr(t *testing.T) {
 	}
 }
 
+// Test SelectBinaryExpr convenience method.
+func TestRender_Select_SelectBinaryExpr(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	result, err := astql.Select(instance.T("documents")).
+		Fields(instance.F("id"), instance.F("content")).
+		SelectBinaryExpr(instance.F("embedding"), astql.VectorCosineDistance, instance.P("query_vec"), "score").
+		OrderByExpr(instance.F("embedding"), astql.VectorCosineDistance, instance.P("query_vec"), astql.ASC).
+		Limit(10).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "id", "content", "embedding" <=> :query_vec AS "score" FROM "documents" ORDER BY "embedding" <=> :query_vec ASC LIMIT 10`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+
+	if len(result.RequiredParams) != 1 || result.RequiredParams[0] != "query_vec" {
+		t.Errorf("Expected params [query_vec], got %v", result.RequiredParams)
+	}
+}
+
+// Test SelectBinaryExpr with multiple vector operators.
+func TestRender_Select_SelectBinaryExpr_MultipleDistances(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	result, err := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		SelectBinaryExpr(instance.F("embedding"), astql.VectorL2Distance, instance.P("query"), "l2_distance").
+		SelectBinaryExpr(instance.F("embedding"), astql.VectorCosineDistance, instance.P("query"), "cosine_distance").
+		SelectBinaryExpr(instance.F("embedding"), astql.VectorInnerProduct, instance.P("query"), "inner_product").
+		Limit(5).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `SELECT "id", "embedding" <-> :query AS "l2_distance", "embedding" <=> :query AS "cosine_distance", "embedding" <#> :query AS "inner_product" FROM "documents" LIMIT 5`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+// Test SelectBinaryExpr fails on non-SELECT query.
+func TestRender_SelectBinaryExpr_NonSelect(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	_, err := astql.Update(instance.T("documents")).
+		Set(instance.F("content"), instance.P("new_content")).
+		SelectBinaryExpr(instance.F("embedding"), astql.VectorL2Distance, instance.P("query"), "distance").
+		Render(postgres.New())
+
+	if err == nil {
+		t.Fatal("Expected error for SelectBinaryExpr on UPDATE query")
+	}
+	if !strings.Contains(err.Error(), "SelectBinaryExpr can only be used with SELECT") {
+		t.Errorf("Expected error about SELECT queries, got: %v", err)
+	}
+}
+
+// Test SelectBinaryExpr fails with invalid alias.
+func TestRender_SelectBinaryExpr_InvalidAlias(t *testing.T) {
+	instance := createJSONBTestInstance(t)
+
+	_, err := astql.Select(instance.T("documents")).
+		Fields(instance.F("id")).
+		SelectBinaryExpr(instance.F("embedding"), astql.VectorL2Distance, instance.P("query"), "invalid-alias").
+		Render(postgres.New())
+
+	if err == nil {
+		t.Fatal("Expected error for invalid alias")
+	}
+	if !strings.Contains(err.Error(), "invalid alias") {
+		t.Errorf("Expected error about invalid alias, got: %v", err)
+	}
+}
+
 // Test JSONBText renders field->>:key_param (parameterized).
 func TestRender_Select_JSONBText(t *testing.T) {
 	instance := createJSONBTestInstance(t)
