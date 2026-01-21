@@ -131,3 +131,10 @@ jobs:
       with:
         name: benchmark-results
         path: benchmark_results.txt
+
+  ci-complete:
+    name: CI Complete
+    needs: [test, lint, integration, security, benchmark]
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo "CI complete"

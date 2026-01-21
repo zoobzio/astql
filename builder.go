@@ -588,6 +588,36 @@ func (b *Builder) SelectExpr(expr types.FieldExpression) *Builder {
 	return b
 }
 
+// SelectBinaryExpr adds a binary expression (field <op> param) AS alias to SELECT.
+// Useful for vector distance calculations with pgvector.
+//
+// Example:
+//
+//	builder.SelectBinaryExpr(f, VectorCosineDistance, p, "score")
+//	// Renders: "field" <=> :param AS "score"
+func (b *Builder) SelectBinaryExpr(f types.Field, op types.Operator, p types.Param, alias string) *Builder {
+	if b.err != nil {
+		return b
+	}
+	if b.ast.Operation != types.OpSelect {
+		b.err = fmt.Errorf("SelectBinaryExpr can only be used with SELECT queries")
+		return b
+	}
+	if !isValidSQLIdentifier(alias) {
+		b.err = fmt.Errorf("invalid alias '%s': must be alphanumeric/underscore, start with letter/underscore, and contain no SQL keywords", alias)
+		return b
+	}
+	b.ast.FieldExpressions = append(b.ast.FieldExpressions, types.FieldExpression{
+		Binary: &types.BinaryExpression{
+			Field:    f,
+			Operator: op,
+			Param:    p,
+		},
+		Alias: alias,
+	})
+	return b
+}
+
 // Set operations (UNION, INTERSECT, EXCEPT)
 
 // Union creates a UNION between two queries (standalone function).
