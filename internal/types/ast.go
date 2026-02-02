@@ -1,6 +1,10 @@
 package types
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
 
 // Operation represents the type of query operation.
 type Operation string
@@ -373,24 +377,25 @@ func (SubqueryCondition) IsConditionItem() {}
 //
 //nolint:govet // fieldalignment: Logical grouping is preferred over memory optimization
 type AST struct {
-	WhereClause      ConditionItem
-	Lock             *LockMode
-	OnConflict       *ConflictClause
-	Limit            *PaginationValue
-	Offset           *PaginationValue
-	Updates          map[Field]Param
-	Target           Table
-	Operation        Operation
-	Values           []map[Field]Param
-	Ordering         []OrderBy
-	Joins            []Join
-	GroupBy          []Field
-	Having           []ConditionItem
-	FieldExpressions []FieldExpression
-	Returning        []Field
-	DistinctOn       []Field
-	Fields           []Field
-	Distinct         bool
+	WhereClause       ConditionItem
+	Lock              *LockMode
+	OnConflict        *ConflictClause
+	Limit             *PaginationValue
+	Offset            *PaginationValue
+	Updates           map[Field]Param
+	UpdateExpressions map[Field]FieldExpression
+	Target            Table
+	Operation         Operation
+	Values            []map[Field]Param
+	Ordering          []OrderBy
+	Joins             []Join
+	GroupBy           []Field
+	Having            []ConditionItem
+	FieldExpressions  []FieldExpression
+	Returning         []Field
+	DistinctOn        []Field
+	Fields            []Field
+	Distinct          bool
 }
 
 // Validate performs basic validation on the AST.
@@ -457,8 +462,21 @@ func (ast *AST) Validate() error {
 			return fmt.Errorf("ON CONFLICT requires at least one column")
 		}
 	case OpUpdate:
-		if len(ast.Updates) == 0 {
+		if len(ast.Updates) == 0 && len(ast.UpdateExpressions) == 0 {
 			return fmt.Errorf("UPDATE requires at least one field to update")
+		}
+		// Detect duplicate fields across Updates and UpdateExpressions
+		if len(ast.Updates) > 0 && len(ast.UpdateExpressions) > 0 {
+			var duplicates []string
+			for field := range ast.Updates {
+				if _, exists := ast.UpdateExpressions[field]; exists {
+					duplicates = append(duplicates, field.Name)
+				}
+			}
+			if len(duplicates) > 0 {
+				sort.Strings(duplicates)
+				return fmt.Errorf("field(s) %s appear in both Set and SetExpr", strings.Join(duplicates, ", "))
+			}
 		}
 		// UPDATE can have RETURNING but not SELECT features
 		if ast.Distinct || len(ast.Joins) > 0 || len(ast.GroupBy) > 0 {

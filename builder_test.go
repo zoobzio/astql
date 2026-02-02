@@ -234,6 +234,68 @@ func TestSet_WrongOperation(t *testing.T) {
 	}
 }
 
+func TestSetExpr(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+	table := instance.T("users")
+
+	builder := astql.Update(table).
+		SetExpr(instance.F("age"), types.FieldExpression{
+			Binary: &types.BinaryExpression{
+				Field:    instance.F("age"),
+				Operator: "+",
+				Param:    instance.P("increment"),
+			},
+		})
+
+	ast, err := builder.Build()
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if len(ast.UpdateExpressions) != 1 {
+		t.Errorf("Expected 1 update expression, got %d", len(ast.UpdateExpressions))
+	}
+}
+
+func TestSetExpr_PreviousError(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+	table := instance.T("users")
+
+	// Force an error first via Set on SELECT, then chain SetExpr
+	builder := astql.Select(table).
+		Set(instance.F("age"), instance.P("val")).
+		SetExpr(instance.F("age"), types.FieldExpression{
+			Binary: &types.BinaryExpression{
+				Field:    instance.F("age"),
+				Operator: "+",
+				Param:    instance.P("increment"),
+			},
+		})
+
+	_, err := builder.Build()
+	if err == nil {
+		t.Fatal("Expected error from previous Set() on SELECT")
+	}
+}
+
+func TestSetExpr_WrongOperation(t *testing.T) {
+	instance := createBuilderTestInstance(t)
+	table := instance.T("users")
+
+	builder := astql.Select(table).
+		SetExpr(instance.F("age"), types.FieldExpression{
+			Binary: &types.BinaryExpression{
+				Field:    instance.F("age"),
+				Operator: "+",
+				Param:    instance.P("increment"),
+			},
+		})
+
+	_, err := builder.Build()
+	if err == nil {
+		t.Fatal("Expected error when using SetExpr() with SELECT")
+	}
+}
+
 func TestValues(t *testing.T) {
 	instance := createBuilderTestInstance(t)
 	table := instance.T("users")

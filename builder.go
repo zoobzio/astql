@@ -145,6 +145,27 @@ func (b *Builder) Set(f types.Field, p types.Param) *Builder {
 	return b
 }
 
+// SetExpr adds a field update with an expression value for UPDATE queries.
+// Use this for computed assignments like `items_completed = items_completed + :increment`.
+func (b *Builder) SetExpr(f types.Field, expr types.FieldExpression) *Builder {
+	if b.err != nil {
+		return b
+	}
+	if b.ast.Operation != types.OpUpdate {
+		b.err = fmt.Errorf("SetExpr() can only be used with UPDATE queries")
+		return b
+	}
+	if expr.Alias != "" {
+		b.err = fmt.Errorf("SetExpr() does not support aliased expressions")
+		return b
+	}
+	if b.ast.UpdateExpressions == nil {
+		b.ast.UpdateExpressions = make(map[types.Field]types.FieldExpression)
+	}
+	b.ast.UpdateExpressions[f] = expr
+	return b
+}
+
 // Values adds a row of field-value pairs for INSERT queries.
 // Call Values() multiple times to insert multiple rows.
 // Use instance.ValueMap() to create the map programmatically.

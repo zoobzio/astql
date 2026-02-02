@@ -262,6 +262,16 @@ func (r *Renderer) validateAST(ast *types.AST) error {
 		}
 	}
 
+	for field := range ast.UpdateExpressions {
+		if err := r.checkJSONBField(field); err != nil {
+			return err
+		}
+		exprCopy := ast.UpdateExpressions[field]
+		if err := r.validateFieldExpression(&exprCopy); err != nil {
+			return err
+		}
+	}
+
 	for _, valueSet := range ast.Values {
 		for field := range valueSet {
 			if err := r.checkJSONBField(field); err != nil {
@@ -655,11 +665,30 @@ func (r *Renderer) renderUpdate(ast *types.AST, sql *strings.Builder, addParam f
 		return updateFields[i].Name < updateFields[j].Name
 	})
 
-	updates := make([]string, 0, len(ast.Updates))
+	updates := make([]string, 0, len(ast.Updates)+len(ast.UpdateExpressions))
 	for _, field := range updateFields {
 		param := ast.Updates[field]
 		updates = append(updates, fmt.Sprintf("%s = %s", r.quoteIdentifier(field.Name), addParam(param)))
 	}
+
+	// Render expression-based updates
+	exprFields := make([]types.Field, 0, len(ast.UpdateExpressions))
+	for field := range ast.UpdateExpressions {
+		exprFields = append(exprFields, field)
+	}
+	sort.Slice(exprFields, func(i, j int) bool {
+		return exprFields[i].Name < exprFields[j].Name
+	})
+	for _, field := range exprFields {
+		expr := ast.UpdateExpressions[field]
+		ctx := newRenderContext(addParam)
+		rendered, err := r.renderFieldExpression(expr, ctx)
+		if err != nil {
+			return err
+		}
+		updates = append(updates, fmt.Sprintf("%s = %s", r.quoteIdentifier(field.Name), rendered))
+	}
+
 	sql.WriteString(strings.Join(updates, ", "))
 
 	if ast.WhereClause != nil {
