@@ -108,6 +108,119 @@ func TestRender_Update(t *testing.T) {
 	}
 }
 
+func TestRender_UpdateSetExpr(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpUpdate,
+		Target:    types.Table{Name: "users"},
+		UpdateExpressions: map[types.Field]types.FieldExpression{
+			{Name: "age"}: {
+				Binary: &types.BinaryExpression{
+					Field:    types.Field{Name: "age"},
+					Operator: "+",
+					Param:    types.Param{Name: "increment"},
+				},
+			},
+		},
+		WhereClause: types.Condition{
+			Field:    types.Field{Name: "id"},
+			Operator: types.EQ,
+			Value:    types.Param{Name: "user_id"},
+		},
+	}
+
+	result, err := r.Render(ast)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	expected := `UPDATE "users" SET "age" = "age" + :increment WHERE "id" = :user_id`
+	if result.SQL != expected {
+		t.Errorf("SQL = %q, want %q", result.SQL, expected)
+	}
+}
+
+func TestRender_UpdateSetExpr_JSONB(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpUpdate,
+		Target:    types.Table{Name: "users"},
+		UpdateExpressions: map[types.Field]types.FieldExpression{
+			{Name: "data", JSONBTextKey: &types.Param{Name: "key"}}: {
+				Binary: &types.BinaryExpression{
+					Field:    types.Field{Name: "data"},
+					Operator: "+",
+					Param:    types.Param{Name: "val"},
+				},
+			},
+		},
+		WhereClause: types.Condition{
+			Field:    types.Field{Name: "id"},
+			Operator: types.EQ,
+			Value:    types.Param{Name: "user_id"},
+		},
+	}
+
+	_, err := r.Render(ast)
+	if err == nil {
+		t.Fatal("Expected error for JSONB field in UpdateExpressions")
+	}
+}
+
+func TestRender_UpdateSetExpr_ExprError(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpUpdate,
+		Target:    types.Table{Name: "users"},
+		UpdateExpressions: map[types.Field]types.FieldExpression{
+			{Name: "age"}: {
+				Case: &types.CaseExpression{
+					WhenClauses: []types.WhenClause{
+						{Condition: nil, Result: types.Param{Name: "val"}},
+					},
+				},
+			},
+		},
+		WhereClause: types.Condition{
+			Field:    types.Field{Name: "id"},
+			Operator: types.EQ,
+			Value:    types.Param{Name: "user_id"},
+		},
+	}
+
+	_, err := r.Render(ast)
+	if err == nil {
+		t.Fatal("Expected error for invalid expression in UpdateExpressions")
+	}
+}
+
+func TestRender_UpdateSetExpr_ExprJSONB(t *testing.T) {
+	r := New()
+	ast := &types.AST{
+		Operation: types.OpUpdate,
+		Target:    types.Table{Name: "users"},
+		UpdateExpressions: map[types.Field]types.FieldExpression{
+			{Name: "age"}: {
+				Binary: &types.BinaryExpression{
+					Field:    types.Field{Name: "data", JSONBTextKey: &types.Param{Name: "key"}},
+					Operator: "+",
+					Param:    types.Param{Name: "val"},
+				},
+			},
+		},
+		WhereClause: types.Condition{
+			Field:    types.Field{Name: "id"},
+			Operator: types.EQ,
+			Value:    types.Param{Name: "user_id"},
+		},
+	}
+
+	_, err := r.Render(ast)
+	if err == nil {
+		t.Fatal("Expected error for JSONB in expression field")
+	}
+}
+
 func TestRender_Delete(t *testing.T) {
 	r := New()
 	ast := &types.AST{

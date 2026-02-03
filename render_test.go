@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/zoobzio/astql"
+	"github.com/zoobzio/astql/internal/types"
 	"github.com/zoobzio/astql/mariadb"
 	"github.com/zoobzio/astql/mssql"
 	"github.com/zoobzio/astql/postgres"
@@ -471,6 +472,74 @@ func TestRender_Update_WithReturning(t *testing.T) {
 	expected := `UPDATE "users" SET "active" = :is_active WHERE "id" = :user_id RETURNING "id", "active"`
 	if result.SQL != expected {
 		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestRender_Update_SetExpr(t *testing.T) {
+	instance := createRenderTestInstance(t)
+
+	result, err := astql.Update(instance.T("users")).
+		SetExpr(instance.F("age"), types.FieldExpression{
+			Binary: &types.BinaryExpression{
+				Field:    instance.F("age"),
+				Operator: "+",
+				Param:    instance.P("increment"),
+			},
+		}).
+		Where(instance.C(instance.F("id"), "=", instance.P("user_id"))).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `UPDATE "users" SET "age" = "age" + :increment WHERE "id" = :user_id`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestRender_Update_SetExpr_WithSet(t *testing.T) {
+	instance := createRenderTestInstance(t)
+
+	result, err := astql.Update(instance.T("users")).
+		Set(instance.F("username"), instance.P("new_username")).
+		SetExpr(instance.F("age"), types.FieldExpression{
+			Binary: &types.BinaryExpression{
+				Field:    instance.F("age"),
+				Operator: "+",
+				Param:    instance.P("increment"),
+			},
+		}).
+		Where(instance.C(instance.F("id"), "=", instance.P("user_id"))).
+		Render(postgres.New())
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	expected := `UPDATE "users" SET "username" = :new_username, "age" = "age" + :increment WHERE "id" = :user_id`
+	if result.SQL != expected {
+		t.Errorf("Expected SQL:\n%s\nGot:\n%s", expected, result.SQL)
+	}
+}
+
+func TestRender_Update_SetExpr_DuplicateField(t *testing.T) {
+	instance := createRenderTestInstance(t)
+
+	_, err := astql.Update(instance.T("users")).
+		Set(instance.F("age"), instance.P("new_age")).
+		SetExpr(instance.F("age"), types.FieldExpression{
+			Binary: &types.BinaryExpression{
+				Field:    instance.F("age"),
+				Operator: "+",
+				Param:    instance.P("increment"),
+			},
+		}).
+		Render(postgres.New())
+	if err == nil {
+		t.Fatal("Expected error for duplicate field in Set and SetExpr")
+	}
+	if !strings.Contains(err.Error(), "age") {
+		t.Errorf("Expected error to mention 'age', got: %v", err)
 	}
 }
 
